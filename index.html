@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Noodle Technology</title>
+<link rel="icon" type="image/svg+xml" href="logo.svg">
 <meta name="description" content="Noodle Technology, LLC is an AI software company based in West Virginia. Makers of Noodle LLM.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -16,23 +17,23 @@
   --ink: #17221f;
   --muted: #56635e;
   --line: #d9ded9;
-  --accent: #d98a1c;
-  --accent-ink: #8a5208;
+  --accent: #3b82f6;
+  --accent-ink: #1d4ed8;
   --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
   --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --bg: #121816; --surface: #1a2220; --ink: #e9eeeb; --muted: #9aa7a1; --line: #2b3532;
-  --accent: #f0a63a; --accent-ink: #f6c27a; color-scheme: dark } }
+  --accent: #60a5fa; --accent-ink: #93c5fd; color-scheme: dark } }
 :root[data-theme="dark"] {
   --bg: #121816; --surface: #1a2220; --ink: #e9eeeb; --muted: #9aa7a1; --line: #2b3532;
-  --accent: #f0a63a; --accent-ink: #f6c27a; color-scheme: dark }
+  --accent: #60a5fa; --accent-ink: #93c5fd; color-scheme: dark }
 
 body { background: var(--bg); color: var(--ink); font: 400 1.0625rem/1.65 var(--body); margin: 0; }
 .wrap { max-width: 46rem; margin: 0 auto; padding-inline: 20px; padding-block: 56px 40px; display: grid; gap: 64px; }
 header { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
-.brand { font: 700 1.125rem/1 var(--display); letter-spacing: -0.01em; color: var(--ink); text-decoration: none; }
+.brand { display: inline-flex; align-items: center; gap: 10px; font: 700 1.125rem/1 var(--display); letter-spacing: -0.01em; color: var(--ink); text-decoration: none; }
 .brand span { color: var(--muted); font-weight: 500; }
 nav { display: flex; gap: 20px; font-size: 0.9375rem; }
 nav a { color: var(--muted); text-decoration: none; }
@@ -67,7 +68,7 @@ footer { border-top: 1px solid var(--line); padding-top: 20px; font-size: 0.875r
 
 <div class="wrap">
   <header>
-    <a class="brand" href="#top" id="top">Noodle Technology <span>LLC</span></a>
+    <a class="brand" href="#top" id="top"><img src="logo.svg" alt="" width="32" height="28">Noodle Technology <span>LLC</span></a>
     <nav aria-label="Main">
       <a href="#products">Products</a>
       <a href="#contact">Contact</a>
