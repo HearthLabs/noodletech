@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Noodle Technology</title>
+<meta name="description" content="Noodle Technology, LLC is an AI software company based in West Virginia. Makers of Noodle LLM.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400&display=swap">
+<style>
+/* Layout: one narrow column, a wavy "noodle" line as the single signature mark, quiet product card below */
+:root {
+  --bg: #f6f7f4;
+  --surface: #ffffff;
+  --ink: #17221f;
+  --muted: #56635e;
+  --line: #d9ded9;
+  --accent: #d98a1c;
+  --accent-ink: #8a5208;
+  --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #121816; --surface: #1a2220; --ink: #e9eeeb; --muted: #9aa7a1; --line: #2b3532;
+  --accent: #f0a63a; --accent-ink: #f6c27a; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #121816; --surface: #1a2220; --ink: #e9eeeb; --muted: #9aa7a1; --line: #2b3532;
+  --accent: #f0a63a; --accent-ink: #f6c27a; color-scheme: dark }
+
+body { background: var(--bg); color: var(--ink); font: 400 1.0625rem/1.65 var(--body); margin: 0; }
+.wrap { max-width: 46rem; margin: 0 auto; padding-inline: 20px; padding-block: 56px 40px; display: grid; gap: 64px; }
+header { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+.brand { font: 700 1.125rem/1 var(--display); letter-spacing: -0.01em; color: var(--ink); text-decoration: none; }
+.brand span { color: var(--muted); font-weight: 500; }
+nav { display: flex; gap: 20px; font-size: 0.9375rem; }
+nav a { color: var(--muted); text-decoration: none; }
+nav a:hover, nav a:focus-visible { color: var(--ink); }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
+
+.hero { display: grid; gap: 20px; }
+.eyebrow { font: 400 0.8125rem/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent-ink); margin: 0; }
+h1 { font: 700 clamp(2.4rem, 7vw, 3.75rem)/1.04 var(--display); letter-spacing: -0.025em; margin: 0; text-wrap: balance; }
+.lede { font-size: 1.1875rem; color: var(--muted); max-width: 36rem; margin: 0; }
+.noodle { width: 100%; max-width: 100%; height: 48px; display: block; }
+.noodle path { fill: none; stroke: var(--accent); stroke-width: 4; stroke-linecap: round; }
+
+section { display: grid; gap: 20px; }
+h2 { font: 500 0.8125rem/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 0; }
+p { margin: 0; max-width: 38rem; }
+
+.product { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 28px; display: grid; gap: 14px; }
+.product h3 { font: 700 1.625rem/1.1 var(--display); letter-spacing: -0.015em; margin: 0; }
+.product ul { margin: 0; padding-left: 1.1em; display: grid; gap: 6px; color: var(--muted); }
+.product li::marker { color: var(--accent); }
+.cta { justify-self: start; font-weight: 500; color: var(--accent-ink); text-decoration: none; border-bottom: 2px solid var(--accent); padding-bottom: 2px; }
+.cta:hover { color: var(--ink); }
+.soon { font-size: 0.9375rem; color: var(--muted); }
+
+.contact { font-family: var(--mono); font-size: 1rem; user-select: all; color: var(--ink); }
+footer { border-top: 1px solid var(--line); padding-top: 20px; font-size: 0.875rem; color: var(--muted); display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+@media (max-width: 480px) { .wrap { gap: 48px; padding-block: 36px 32px; } .product { padding: 22px; } }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <a class="brand" href="#top" id="top">Noodle Technology <span>LLC</span></a>
+    <nav aria-label="Main">
+      <a href="#products">Products</a>
+      <a href="#contact">Contact</a>
+    </nav>
+  </header>
+
+  <div class="hero">
+    <p class="eyebrow">AI software company</p>
+    <h1>We build AI software that works for you.</h1>
+    <svg class="noodle" viewBox="0 0 600 48" preserveAspectRatio="none" aria-hidden="true">
+      <path d="M2 24 C 40 2, 70 46, 110 24 S 180 2, 220 24 S 290 46, 330 24 S 400 2, 440 24 S 510 46, 550 24 S 590 10, 598 18"/>
+    </svg>
+    <p class="lede">Noodle Technology makes practical AI tools for everyday people and creators, with a focus on privacy and on software you own and control.</p>
+  </div>
+
+  <section id="products" aria-labelledby="products-h">
+    <h2 id="products-h">Products</h2>
+    <article class="product">
+      <h3>Noodle LLM</h3>
+      <p>A desktop app that runs AI models privately on your own PC. Your conversations stay on your computer.</p>
+      <ul>
+        <li>Chat with AI models that run locally, no cloud account needed</li>
+        <li>A model store to find and download new models</li>
+        <li>A phone remote to use your PC's AI from anywhere in the house</li>
+      </ul>
+      <a class="cta" href="https://noodlellm.com" target="_blank" rel="noopener">Visit noodlellm.com</a>
+    </article>
+    <p class="soon">More products are on the way.</p>
+  </section>
+
+  <section id="contact" aria-labelledby="contact-h">
+    <h2 id="contact-h">Contact</h2>
+    <p>For questions, partnerships, or press, email us at</p>
+    <p class="contact"><a href="mailto:info@noodlellm.com" style="color:inherit">info@noodlellm.com</a></p>
+  </section>
+
+  <footer>
+    <span>© 2026 Noodle Technology, LLC</span>
+    <span>A West Virginia limited liability company</span>
+  </footer>
+</div>
+</body>
+</html>
