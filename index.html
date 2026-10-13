@@ -12,23 +12,18 @@
 <style>
 /* Layout: one narrow column, a wavy "noodle" line as the single signature mark, quiet product card below */
 :root {
-  --bg: #f6f7f4;
-  --surface: #ffffff;
-  --ink: #17221f;
-  --muted: #56635e;
-  --line: #d9ded9;
-  --accent: #3b82f6;
-  --accent-ink: #1d4ed8;
+  --bg: #12151c;
+  --surface: #1e2433;
+  --ink: #e8edf5;
+  --muted: #9ba6b9;
+  --line: #2a3243;
+  --accent: #60a5fa;
+  --accent-ink: #93c5fd;
+  color-scheme: dark;
   --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
   --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
 }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-  --bg: #121816; --surface: #1a2220; --ink: #e9eeeb; --muted: #9aa7a1; --line: #2b3532;
-  --accent: #60a5fa; --accent-ink: #93c5fd; color-scheme: dark } }
-:root[data-theme="dark"] {
-  --bg: #121816; --surface: #1a2220; --ink: #e9eeeb; --muted: #9aa7a1; --line: #2b3532;
-  --accent: #60a5fa; --accent-ink: #93c5fd; color-scheme: dark }
 
 body { background: var(--bg); color: var(--ink); font: 400 1.0625rem/1.65 var(--body); margin: 0; }
 .wrap { max-width: 46rem; margin: 0 auto; padding-inline: 20px; padding-block: 56px 40px; display: grid; gap: 64px; }
