@@ -168,6 +168,17 @@ async function dashboard() {
       h("span", { class: "muted" }, a.summary), h("span", { class: "meta" }, `Updated ${fmtDate(a.updated_at)}`)))));
 }
 
+const OTHER = "__other";
+const LICENSES = [
+  { name: "Freeware", help: "Free to use, but you keep the source code private and don't allow copying or reselling." },
+  { name: "Free for personal use", help: "Free for individuals; businesses need your permission or must pay." },
+  { name: "Commercial", help: "People must buy it (or a license key) to use it." },
+  { name: "MIT", help: "Open source. Anyone may use, change and share it, as long as your copyright note stays." },
+  { name: "Apache 2.0", help: "Open source like MIT, with an explicit patent grant." },
+  { name: "GPL v3", help: "Open source. Anyone who shares a changed version must share its source under the same terms." },
+  { name: "BSD 3-Clause", help: "Open source, very permissive, similar to MIT." },
+];
+
 // ----------------------------------------------------------------- new app
 function appFields(app = {}) {
   const name = h("input", { type: "text", required: true, minlength: 2, maxlength: 80, value: app.name ?? "" });
@@ -176,7 +187,20 @@ function appFields(app = {}) {
   const description = h("textarea", { maxlength: 10000, value: app.description ?? "" });
   const category = h("select", {}, h("option", { value: "" }, "Choose a category"),
     ...CATEGORIES.map((c) => h("option", { value: c, selected: app.category === c }, c)));
-  const license = h("input", { type: "text", maxlength: 100, placeholder: "e.g. Freeware, MIT", value: app.license_name ?? "" });
+  const known = LICENSES.find((l) => l.name === app.license_name);
+  const license = h("select", {}, h("option", { value: "" }, "Choose a license"),
+    ...LICENSES.map((l) => h("option", { value: l.name, selected: known?.name === l.name }, l.name)),
+    h("option", { value: OTHER, selected: !!app.license_name && !known }, "Other (describe it)"));
+  const licenseOther = h("input", { type: "text", maxlength: 100, placeholder: "Name or short description", value: app.license_name && !known ? app.license_name : "" });
+  const licenseHelp = h("span", { class: "hint" });
+  const syncLicense = () => {
+    const l = LICENSES.find((x) => x.name === license.value);
+    licenseHelp.textContent = l ? l.help : "How people are allowed to use your app.";
+    licenseOther.hidden = license.value !== OTHER;
+    licenseOther.required = license.value === OTHER;
+  };
+  license.addEventListener("change", syncLicense);
+  syncLicense();
   const homepage = h("input", { type: "url", placeholder: "https://", value: app.homepage_url ?? "" });
   const support = h("input", { type: "url", placeholder: "https:// or a contact page", value: app.support_url ?? "" });
   if (!app.slug) name.addEventListener("input", () => { slug.value = slugify(name.value); });
@@ -186,13 +210,13 @@ function appFields(app = {}) {
     h("label", {}, "One-line summary", h("span", { class: "hint" }, "Up to 160 characters. Say what it does."), summary),
     h("label", {}, "Description", h("span", { class: "hint" }, "What it does, what it needs, anything people should know. Be honest about network use and data collection."), description),
     h("label", {}, "Category", category),
-    h("label", {}, "License", h("span", { class: "hint" }, "How people may use your app"), license),
+    h("label", {}, "License", licenseHelp, license, licenseOther),
     h("label", {}, "Your website (optional)", homepage),
     h("label", {}, "Support link (optional)", support),
   ];
   const read = () => ({
     slug: slug.value.trim(), name: name.value.trim(), summary: summary.value.trim(), description: description.value,
-    category: category.value || null, license_name: license.value.trim(),
+    category: category.value || null, license_name: (license.value === OTHER ? licenseOther.value : license.value).trim(),
     homepage_url: homepage.value.trim() || null, support_url: support.value.trim() || null,
   });
   return { els, read };
