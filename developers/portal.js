@@ -171,7 +171,7 @@ async function dashboard() {
 // ----------------------------------------------------------------- new app
 function appFields(app = {}) {
   const name = h("input", { type: "text", required: true, minlength: 2, maxlength: 80, value: app.name ?? "" });
-  const slug = h("input", { type: "text", required: true, pattern: "[a-z0-9][a-z0-9\\-]{1,47}", value: app.slug ?? "", disabled: !!app.slug });
+  const slug = h("input", { type: "text", required: true, pattern: "[a-z0-9][a-z0-9\\-]{1,47}", value: app.slug ?? "", readOnly: true, tabindex: -1 });
   const summary = h("input", { type: "text", required: true, maxlength: 160, value: app.summary ?? "" });
   const description = h("textarea", { maxlength: 10000, value: app.description ?? "" });
   const category = h("select", {}, h("option", { value: "" }, "Choose a category"),
@@ -182,7 +182,7 @@ function appFields(app = {}) {
   if (!app.slug) name.addEventListener("input", () => { slug.value = slugify(name.value); });
   const els = [
     h("label", {}, "App name", name),
-    h("label", {}, "Web address", h("span", { class: "hint" }, "noodletechnology.com/store/#/app/… This can't be changed later."), slug),
+    h("label", {}, "Web address", h("span", { class: "hint" }, "Made from the app name. It can't be edited or changed later."), slug),
     h("label", {}, "One-line summary", h("span", { class: "hint" }, "Up to 160 characters. Say what it does."), summary),
     h("label", {}, "Description", h("span", { class: "hint" }, "What it does, what it needs, anything people should know. Be honest about network use and data collection."), description),
     h("label", {}, "Category", category),
@@ -207,7 +207,14 @@ function newApp() {
       onsubmit: async (e) => {
         e.preventDefault(); clear(status);
         try {
-          const row = ok(await sb.from("apps").insert({ developer_id: session.user.id, ...read() }).select("id").single(), "Saving");
+          const fields = read();
+          let res = await sb.from("apps").insert({ developer_id: session.user.id, ...fields }).select("id").single();
+          // Address already used by another app: add a short suffix instead of asking the developer to edit it.
+          if (res.error && (res.error.code === "23505" || /duplicate|unique/i.test(res.error.message))) {
+            const suffix = Math.random().toString(36).slice(2, 6);
+            res = await sb.from("apps").insert({ developer_id: session.user.id, ...fields, slug: `${fields.slug.slice(0, 43)}-${suffix}` }).select("id").single();
+          }
+          const row = ok(res, "Saving");
           location.hash = `#/app/${row.id}/release`;
         } catch (err) { status.append(notice("error", err.message)); }
       },
