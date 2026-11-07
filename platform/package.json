@@ -1,0 +1,13 @@
+{
+  "name": "noodle-marketplace-platform",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node tests/rls.test.mjs",
+    "test:functions": "deno test --config supabase/functions/deno.json tests/functions.test.ts",
+    "check": "deno check --config supabase/functions/deno.json supabase/functions/scan-release/index.ts supabase/functions/scan-sweep/index.ts supabase/functions/download/index.ts"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.2.0"
+  }
+}

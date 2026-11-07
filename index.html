@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Noodle Technology</title>
+<title>Noodle Technology — Windows App Marketplace</title>
 <link rel="icon" type="image/svg+xml" href="logo.svg">
-<meta name="description" content="Noodle Technology, LLC is an AI software company based in West Virginia. Makers of Noodle LLM.">
+<meta name="description" content="A Windows app marketplace. Developers publish, we handle hosting, payments, taxes and malware scanning. Downloads are scanned before they are listed.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400&display=swap">
@@ -57,6 +57,18 @@ p { margin: 0; max-width: 38rem; }
 .contact { font-family: var(--mono); font-size: 1rem; user-select: all; color: var(--ink); }
 footer { border-top: 1px solid var(--line); padding-top: 20px; font-size: 0.875rem; color: var(--muted); display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 @media (max-width: 480px) { .wrap { gap: 48px; padding-block: 36px 32px; } .product { padding: 22px; } }
+
+.lede strong { color: var(--ink); font-weight: 500; }
+.apps { display: grid; gap: 16px; }
+.product .tag { font: 400 0.75rem/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent-ink); }
+.cols { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 22px; display: grid; gap: 8px; align-content: start; }
+.card h3 { font: 700 1.125rem/1.2 var(--display); margin: 0; letter-spacing: -0.01em; }
+.card p { color: var(--muted); font-size: 0.9688rem; }
+.steps { margin: 0; padding-left: 1.2em; display: grid; gap: 8px; color: var(--muted); max-width: 38rem; }
+.steps li::marker { color: var(--accent); font-family: var(--mono); }
+.steps strong { color: var(--ink); font-weight: 500; }
+.fine { font-size: 0.875rem; color: var(--muted); }
 </style>
 </head>
 <body>
@@ -64,29 +76,68 @@ footer { border-top: 1px solid var(--line); padding-top: 20px; font-size: 0.875r
 <div class="wrap">
   <header>
     <a class="brand" href="#top" id="top"><img src="logo.svg" alt="" width="32" height="28">Noodle Technology</a>
+    <nav aria-label="Sections">
+      <a href="/store/">Browse apps</a>
+      <a href="/developers/">For developers</a>
+      <a href="#contact">Contact</a>
+    </nav>
   </header>
 
   <div class="hero">
-    <h1>Private AI that runs on your own computer.</h1>
+    <p class="eyebrow">Windows app marketplace</p>
+    <h1>Windows apps, checked before you download.</h1>
     <svg class="noodle" viewBox="0 0 600 48" preserveAspectRatio="none" aria-hidden="true">
       <path d="M2 24 C 40 2, 70 46, 110 24 S 180 2, 220 24 S 290 46, 330 24 S 400 2, 440 24 S 510 46, 550 24 S 590 10, 598 18"/>
     </svg>
-    <p class="lede">Noodle Technology makes practical AI tools for everyday people and organizations, with a focus on privacy and on software you own and control.</p>
+    <p class="lede">Noodle Technology hosts Windows software for independent developers. <strong>Every release is scanned for malware before it is listed</strong>, so you can download without wondering what is inside.</p>
   </div>
 
-  <section id="products" aria-labelledby="products-h">
-    <h2 id="products-h">Products</h2>
-    <article class="product">
-      <h3>Noodle LLM</h3>
-      <p>A desktop app that runs AI models privately on your own PC. Your conversations stay on your computer.</p>
-      <ul>
-        <li>Chat with AI models that run locally, no cloud account needed</li>
-        <li>A model store to find and download new models</li>
-        <li>Use your own files as reference when asking AI questions</li>
-      </ul>
-      <a class="cta" href="https://noodlellm.com" target="_blank" rel="noopener">Visit noodlellm.com</a>
-    </article>
-    <p class="soon">More products are on the way.</p>
+  <section id="apps" aria-labelledby="apps-h">
+    <h2 id="apps-h">Apps</h2>
+    <div class="apps">
+      <article class="product">
+        <span class="tag">Featured</span>
+        <h3>Noodle LLM</h3>
+        <p>A desktop app that runs AI models privately on your own PC. Your conversations stay on your computer.</p>
+        <ul>
+          <li>Chat with AI models that run locally, no cloud account needed</li>
+          <li>A model store to find and download new models</li>
+          <li>Use your own files as reference when asking AI questions</li>
+        </ul>
+        <a class="cta" href="https://noodlellm.com" target="_blank" rel="noopener">Visit noodlellm.com</a>
+      </article>
+    </div>
+    <p class="soon">More apps are on the way as developers join.</p>
+  </section>
+
+  <section id="downloaders" aria-labelledby="dl-h">
+    <h2 id="dl-h">For people who download</h2>
+    <div class="cols">
+      <div class="card"><h3>Scanned first</h3><p>Each release is scanned for malware before it appears in the marketplace.</p></div>
+      <div class="card"><h3>Checksums published</h3><p>Every download lists a SHA-256 hash so you can confirm the file is the one we scanned.</p></div>
+      <div class="card"><h3>Free apps need no account</h3><p>Download free apps directly. No sign-up, no email.</p></div>
+    </div>
+  </section>
+
+  <section id="developers" aria-labelledby="dev-h">
+    <h2 id="dev-h">For developers</h2>
+    <p>You build the app. <strong style="color:var(--ink);font-weight:500">We do the dirty work.</strong> Publish on Noodle and skip the parts of selling software that have nothing to do with your product.</p>
+    <div class="cols">
+      <div class="card"><h3>We host it</h3><p>Hosting, bandwidth and download pages are on us.</p></div>
+      <div class="card"><h3>No payment or tax setup</h3><p>For paid apps we handle checkout, sales tax and payouts, so you do not need a payment account or a registered company to start selling.</p></div>
+      <div class="card"><h3>You keep your rights</h3><p>Your app stays yours. We host the installer you give us, under a non-exclusive agreement.</p></div>
+      <div class="card"><h3>We never see your code</h3><p>You upload a built installer. We do not ask for source code.</p></div>
+    </div>
+    <h2 style="margin-top:12px">How it works</h2>
+    <ol class="steps">
+      <li><strong>Submit</strong> your Windows installer and a short description.</li>
+      <li><strong>We scan</strong> it for malware and check that it installs and runs.</li>
+      <li><strong>You are listed</strong> with a download page, version history and checksum.</li>
+      <li><strong>Paid apps:</strong> we collect payment, handle tax, and pay you your share.</li>
+    </ol>
+    <p class="fine">Developer uploads are in early access. The terms and review process are published as drafts under Legal while they await review.</p>
+    <a class="cta" href="/developers/">Upload your app</a>
+    <a href="mailto:info@noodletechnology.com?subject=Developer%20program">Questions? Email us</a>
   </section>
 
   <section id="contact" aria-labelledby="contact-h">

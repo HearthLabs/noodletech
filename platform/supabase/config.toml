@@ -1,0 +1,10 @@
+# Function settings. The functions check credentials themselves, so the platform's own
+# JWT check is switched off for the public download and for the two that accept the server key.
+[functions.download]
+verify_jwt = false
+
+[functions.scan-release]
+verify_jwt = false
+
+[functions.scan-sweep]
+verify_jwt = false
