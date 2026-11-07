@@ -63,7 +63,13 @@ function signedOut() {
       go.disabled = true; clear(status);
       const { error } = await sb.auth.signInWithOtp({ email: email.value.trim(), options: { emailRedirectTo: `${location.origin}/developers/` } });
       go.disabled = false;
-      if (error) status.append(notice("error", "We couldn't send the link. Check the address and try again."));
+      if (error) {
+        const m = error.message || "";
+        const why = /rate limit|too many|seconds/i.test(m) ? "Too many sign-in emails were requested. Wait a few minutes and try once more."
+          : /disabled|not allowed|signups/i.test(m) ? "Email sign-in is switched off for this site. The site owner needs to enable it."
+          : "We couldn't send the link. Check the address and try again.";
+        status.append(notice("error", `${why} (${m || "no details"})`));
+      }
       else status.append(notice("good", `Check ${email.value.trim()} for a sign-in link. It works once and expires soon.`));
     },
   }, h("label", {}, "Your email", email), go, status);
