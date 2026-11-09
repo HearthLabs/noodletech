@@ -68,6 +68,11 @@ footer { border-top: 1px solid var(--line); padding-top: 20px; font-size: 0.875r
 .steps { margin: 0; padding-left: 1.2em; display: grid; gap: 8px; color: var(--muted); max-width: 38rem; }
 .steps li::marker { color: var(--accent); font-family: var(--mono); }
 .steps strong { color: var(--ink); font-weight: 500; }
+.price { width: 100%; border-collapse: collapse; font-size: 0.9375rem; }
+.price th, .price td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.price th { font: 400 0.75rem/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.price td:last-child, .price th:last-child { text-align: right; }
+.tablewrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
 .fine { font-size: 0.875rem; color: var(--muted); }
 </style>
 </head>
@@ -108,7 +113,7 @@ footer { border-top: 1px solid var(--line); padding-top: 20px; font-size: 0.875r
     <h2 id="dev-h">For developers</h2>
     <p>You build the app. <strong style="color:var(--ink);font-weight:500">We do the dirty work.</strong> Publish on Noodle and skip the parts of selling software that have nothing to do with your product.</p>
     <div class="cols">
-      <div class="card"><h3>We host it</h3><p>Hosting, bandwidth and download pages are on us.</p></div>
+      <div class="card"><h3>We host it</h3><p>Hosting, bandwidth and download pages are handled for you, covered by a yearly registration fee based on size.</p></div>
       <div class="card"><h3>No payment or tax setup</h3><p>For paid apps we handle checkout, sales tax and payouts, so you do not need a payment account or a registered company to start selling.</p></div>
       <div class="card"><h3>You keep your rights</h3><p>Your app stays yours. We host the installer you give us, under a non-exclusive agreement.</p></div>
       <div class="card"><h3>We never see your code</h3><p>You upload a built installer. We do not ask for source code.</p></div>
@@ -120,6 +125,22 @@ footer { border-top: 1px solid var(--line); padding-top: 20px; font-size: 0.875r
       <li><strong>You are listed</strong> with a download page, version history and checksum.</li>
       <li><strong>Paid apps:</strong> we collect payment, handle tax, and pay you your share.</li>
     </ol>
+    <h2 style="margin-top:12px">Pricing</h2>
+    <p><strong style="color:var(--ink);font-weight:500">We keep 25% of sales.</strong> You receive 75% of net revenue, meaning the sale price after payment-processing fees and taxes. Free apps pay no commission.</p>
+    <div class="tablewrap">
+      <table class="price">
+        <thead><tr><th scope="col">Size of one release</th><th scope="col">Yearly registration fee, per app</th></tr></thead>
+        <tbody>
+          <tr><td>Up to 250 MB</td><td>$19</td></tr>
+          <tr><td>250 MB to 1 GB</td><td>$39</td></tr>
+          <tr><td>1 GB to 5 GB</td><td>$99</td></tr>
+          <tr><td>Over 5 GB</td><td>Not accepted</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="fine">Size is the total of the files in one release. Nothing is charged during early access. Prices may change before registration fees begin.</p>
+    <h2 style="margin-top:12px">Versions we keep</h2>
+    <p>Up to <strong style="color:var(--ink);font-weight:500">5 versions per app</strong> stay available to download: the current version, the 2 before it, and 2 older versions you choose to keep. Older files are removed, but each version's record and checksum are kept.</p>
     <p class="fine">Developer uploads are in early access. The terms and review process are published as drafts under Legal while they await review.</p>
     <a class="cta" href="/developers/">Upload your app</a>
     <a href="mailto:info@noodletechnology.com?subject=Developer%20program">Questions? Email us</a>
