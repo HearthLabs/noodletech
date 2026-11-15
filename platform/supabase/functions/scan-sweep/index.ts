@@ -1,5 +1,6 @@
 // POST /scan-sweep  (server only; schedule it every few minutes)
-// Picks up releases stuck in 'scanning' (malware scan or sandbox still running) and tries again.
+// Picks up releases stuck in 'scanning' (malware scan or sandbox still running) and tries again,
+// and takes apps whose yearly listing fee has run out out of the store.
 import { adminClient, safeEqual, scanPorts, serviceKey } from "../_shared/adapter.ts";
 import { json } from "../_shared/handlers.ts";
 import { scanRelease } from "../_shared/pipeline.ts";
@@ -24,5 +25,8 @@ Deno.serve(async (req) => {
       results[r.id] = `failed: ${(e as Error).message}`;
     }
   }
-  return json(200, { checked: Object.keys(results).length, results });
+  // Apps whose yearly listing fee has run out leave the store.
+  const expired = await db.rpc("expire_listings");
+  if (expired.error) console.error("expire_listings failed", expired.error.message);
+  return json(200, { checked: Object.keys(results).length, results, expired_listings: expired.data ?? null });
 });

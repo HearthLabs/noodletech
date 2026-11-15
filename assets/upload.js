@@ -22,6 +22,7 @@ export function validateSelection(exe, docs) {
     if (seen.has(key)) problems.push(`Two files are named "${f.name}".`);
     seen.add(key);
   }
+  if (all.reduce((n, f) => n + f.size, 0) > MAX_FILE_BYTES) problems.push("All the files in one release together can be at most 5 GB.");
   for (const d of docs) {
     if (!DOC_EXTENSIONS.some((ext) => d.name.toLowerCase().endsWith(ext))) {
       problems.push(`"${d.name}": documents must be PDF, TXT or Markdown (.pdf, .txt, .md).`);

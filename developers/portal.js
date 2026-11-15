@@ -82,7 +82,8 @@ function signedOut() {
       card("We host it", "Storage, bandwidth and a download page for your app."),
       card("We check every release", "Each upload is scanned before it's listed, so people can trust what they download."),
       card("You keep your rights", "Your app stays yours. We never ask for your source code, only the finished .exe and any documents."),
-      card("Free apps today", "Right now Noodle lists free apps. Paid apps, with payments and tax handled for you, are planned.")),
+      card("A yearly listing fee by size", "$19 a year for releases up to 250 MB, $39 up to 1 GB, $99 up to 5 GB. You pay by card before your app goes live."),
+      card("You set the price", "List your app free or set a price, and change it whenever you like. Buying paid apps opens soon; we keep 25% of sales.")),
     h("div", { class: "panel narrow" }, h("h2", {}, "Sign in or create an account"),
       h("p", { class: "muted" }, "No password. We email you a link."), form),
     h("p", { class: "muted small" }, "By continuing you'll be asked to accept the ",
@@ -151,7 +152,7 @@ async function routeApp() {
   const hash = location.hash;
   let m;
   if ((m = hash.match(/^#\/app\/([0-9a-f-]{36})\/release$/))) return await releaseWizard(m[1]);
-  if ((m = hash.match(/^#\/app\/([0-9a-f-]{36})$/))) return await appPage(m[1]);
+  if ((m = hash.match(/^#\/app\/([0-9a-f-]{36})(\?paid=1)?$/))) return await appPage(m[1], !!m[2]);
   if (hash === "#/new") return newApp();
   return await dashboard();
 }
@@ -262,22 +263,24 @@ function releaseMessage(r, app) {
       if (r.review_flag === "hold") parts.push(`As a new developer you get a person's review first. The earliest it can be approved is ${fmtDateTime(r.hold_until)}.`);
       else if (r.review_flag === "attention") parts.push("Our checks found something a person needs to look at." + (latest ? ` Details: ${latest.reason}` : ""));
       else if (r.review_flag === "spot_check") parts.push("Selected for a routine check by a person.");
+      else if (r.review_flag === "fee_due") parts.push("Approved. It goes live as soon as the listing fee for its size is paid (see Listing fee above).");
       else parts.push("Waiting for approval.");
       if (app.status === "draft") parts.push("Next, press “Submit app” above so it can go live once approved.");
       return parts.join(" ");
     }
-    case "approved": return app.status === "draft" ? "Approved. Press “Submit app” above to publish it." : `Live in the store since ${fmtDate(r.published_at)}.`;
+    case "approved": return app.status === "draft" ? "Approved. Pay the listing fee above if one is due, then press “Submit app” to publish it." : `Live in the store since ${fmtDate(r.published_at)}.`;
     case "rejected": return `Not approved. ${r.review_note || (latest ? latest.reason : "")}`.trim();
     case "delisted": return "Removed from the store.";
     default: return "";
   }
 }
 
-async function appPage(appId) {
+async function appPage(appId, justPaid = false) {
   const app = ok(await sb.from("apps").select("*").eq("id", appId).maybeSingle(), "Loading the app");
   if (!app) return void main.append(h("a", { href: "#/" }, "← Your apps"), notice("warn", "That app wasn't found."));
   const releases = ok(await sb.from("releases").select("*, release_files(*), release_decisions(*)").eq("app_id", appId).order("created_at", { ascending: false }), "Loading releases");
   const canSubmit = app.status === "draft" && releases.some((r) => r.status === "in_review" || r.status === "approved");
+  const quote = (await sb.rpc("listing_fee_quote", { p_app: appId })).data?.[0] ?? null;
   const status = h("div", { "aria-live": "polite" });
   const refresh = () => { clear(main); appPage(appId); };
 
@@ -287,7 +290,7 @@ async function appPage(appId) {
       statusBadge(app.status)),
     h("div", { class: "row" },
       h("a", { class: "btn", href: `#/app/${appId}/release` }, "Upload a new release"),
-      canSubmit && h("button", { class: "btn secondary", onclick: async (e) => {
+      canSubmit && (!quote || quote.kind === "none") && h("button", { class: "btn secondary", onclick: async (e) => {
         e.target.disabled = true; clear(status);
         const { error } = await sb.rpc("submit_app_for_review", { p_app: appId });
         if (error) { e.target.disabled = false; return status.append(notice("error", error.message.replace(/^.*?:\s*/, ""))); }
@@ -301,6 +304,9 @@ async function appPage(appId) {
         location.hash = "#/";
       } }, "Delete app")),
     status);
+
+  if (justPaid) main.append(notice("good", "Thanks, your payment went through. It can take a minute to show here. Reload the page if it still says a fee is due."));
+  main.append(feePanel(app, releases, quote), pricePanel(app));
 
   // Edit details
   const { els, read } = appFields(app);
@@ -342,6 +348,91 @@ async function appPage(appId) {
         } }, "Delete")),
       cardStatus));
   }
+}
+
+// ------------------------------------------------------------ listing fee
+const TIERS = [
+  { tier: 1, label: "Up to 250 MB", cents: 1900 },
+  { tier: 2, label: "250 MB to 1 GB", cents: 3900 },
+  { tier: 3, label: "1 GB to 5 GB", cents: 9900 },
+];
+const dollars = (cents) => `$${(cents / 100).toFixed(cents % 100 ? 2 : 0)}`;
+const tierLabel = (t) => TIERS.find((x) => x.tier === t)?.label ?? "";
+
+function feePanel(app, releases, quote) {
+  const status = h("div", { "aria-live": "polite" });
+  const live = app.listed_until && new Date(app.listed_until) > new Date();
+  const hasRelease = releases.some((r) => r.status === "in_review" || r.status === "approved");
+  const lines = [];
+  if (live) lines.push(h("p", {}, `Paid for releases ${tierLabel(app.paid_tier).replace(/^Up/, "up")} until ${fmtDate(app.listed_until)}.`));
+  else if (app.listed_until) lines.push(notice("warn", `Your listing ran out on ${fmtDate(app.listed_until)}, so the app is out of the store. Renew to put it back.`));
+
+  const payButton = (label, renew = false) => h("button", { class: "btn", onclick: async (e) => {
+    e.target.disabled = true; status.replaceChildren(notice("info", "Opening the secure payment page…"));
+    const out = await startFeeCheckout(app.id, renew);
+    if (out.url) { location.href = out.url; return; }
+    e.target.disabled = false; status.replaceChildren(notice("error", out.error ?? "Couldn't start the payment. Try again in a moment."));
+  } }, label);
+
+  if (!hasRelease) {
+    lines.push(h("p", { class: "muted" }, "Once a release passes the checks, you'll see the fee for its size here."));
+  } else if (quote && quote.kind !== "none") {
+    const size = fmtBytes(Number(quote.largest_release_bytes));
+    const msg = quote.kind === "upgrade"
+      ? `Your newest release (${size}) is bigger than your paid size. Upgrade for ${dollars(quote.amount_cents)} to cover it until ${fmtDate(app.listed_until)}. It goes live as soon as you pay.`
+      : `Your release is ${size}, so the listing fee is ${dollars(quote.amount_cents)} a year. Pay it to ${app.listed_until ? "put the app back in the store" : "submit the app"}.`;
+    lines.push(h("p", {}, msg), payButton(quote.kind === "upgrade" ? `Pay ${dollars(quote.amount_cents)} to upgrade` : `Pay ${dollars(quote.amount_cents)} for one year`));
+  } else if (live && (new Date(app.listed_until) - Date.now()) < 30 * 864e5) {
+    lines.push(h("p", { class: "muted" }, "Renewing now adds a year to the end date."), payButton("Renew for another year", true));
+  }
+
+  return h("div", { class: "panel" }, h("h2", {}, "Listing fee"),
+    h("p", { class: "muted small" }, "Each app pays a yearly fee set by the size of one release: ",
+      TIERS.map((t) => `${t.label.replace(/^Up/, "up")} ${dollars(t.cents)}`).join(", "), ". Over 5 GB is not accepted."),
+    ...lines, status);
+}
+
+async function startFeeCheckout(appId, renew) {
+  const token = (await sb.auth.getSession()).data.session?.access_token;
+  try {
+    const res = await fetch(functionUrl("listing-fee"), {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}`, apikey: SUPABASE_ANON_KEY },
+      body: JSON.stringify({ app_id: appId, renew }),
+    });
+    return await res.json().catch(() => ({}));
+  } catch {
+    return { error: "Couldn't reach the payment service. Try again in a moment." };
+  }
+}
+
+// ------------------------------------------------------------------ price
+function pricePanel(app) {
+  const status = h("div", { "aria-live": "polite" });
+  const free = h("input", { type: "radio", name: "pricing", id: "p-free", checked: !app.price_cents });
+  const paid = h("input", { type: "radio", name: "pricing", id: "p-paid", checked: app.price_cents > 0 });
+  const amount = h("input", { type: "number", min: "1", max: "1000", step: "0.01", inputmode: "decimal", "aria-label": "Price in US dollars",
+    value: app.price_cents > 0 ? (app.price_cents / 100).toFixed(2) : "", placeholder: "9.99" });
+  const sync = () => { amount.disabled = !paid.checked; };
+  free.addEventListener("change", sync); paid.addEventListener("change", sync); sync();
+  return h("form", {
+    class: "panel",
+    onsubmit: async (e) => {
+      e.preventDefault(); clear(status);
+      const cents = paid.checked ? Math.round(Number(amount.value) * 100) : 0;
+      if (paid.checked && !(cents >= 100 && cents <= 100000)) return status.append(notice("error", "Set a price between $1 and $1,000."));
+      const { error } = await sb.rpc("set_app_price", { p_app: app.id, p_price_cents: cents });
+      if (error) return status.append(notice("error", "Couldn't save the price. Try again."));
+      app.price_cents = cents;
+      status.append(notice("good", cents ? `Saved. The price is now ${dollars(cents)}.` : "Saved. The app is free."));
+    },
+  }, h("h2", {}, "Price"),
+    h("p", { class: "muted small" }, "You can change the price at any time, even while the app is live. You receive 75% of each sale after card fees and tax; Noodle keeps 25%."),
+    h("label", { class: "check", for: "p-free" }, free, h("span", {}, "Free")),
+    h("label", { class: "check", for: "p-paid" }, paid, h("span", {}, "Paid, in US dollars ($1 to $1,000)")),
+    amount,
+    notice("info", "Buying paid apps in the store opens soon. Until then a paid app shows its price but can't be downloaded."),
+    h("button", { class: "btn secondary", type: "submit" }, "Save price"), status);
 }
 
 async function runScan(releaseId) {

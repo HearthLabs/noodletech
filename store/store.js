@@ -95,6 +95,7 @@ function appCard(a) {
     h("h3", {}, a.name),
     h("span", {}, a.summary),
     h("span", { class: "meta" }, `by ${a.developer_name}`,
+      !own ? ` · ${priceText(a.price_cents)}` : "",
       Number(a.downloads) > 0 ? ` · ${Number(a.downloads).toLocaleString()} downloads` : "",
       own ? ` · ${new URL(a.url).hostname} ↗` : ""));
 }
@@ -122,6 +123,7 @@ async function appPage(slug) {
       h("h1", {}, app.name),
       h("p", { class: "lede" }, app.summary),
       h("p", { class: "muted small" }, `by ${app.developer_name}`,
+        ` · ${priceText(app.price_cents)}`,
         app.license_name ? ` · License: ${app.license_name}` : "",
         Number(app.downloads) > 0 ? ` · ${Number(app.downloads).toLocaleString()} downloads` : "")),
   );
@@ -162,17 +164,22 @@ function releasePanel(app, release, files, primary) {
       h("h2", {}, `Version ${release.version}`),
       h("span", { class: "muted small" }, `${fmtDate(release.published_at)} · ${fmtBytes(release.total_size_bytes)} · Windows ${release.min_windows}+`)),
     release.release_notes && h("p", { class: "pre muted" }, release.release_notes),
-    ...exe.map((f) => fileRow(f, true)),
+    app.price_cents > 0 && notice("info", `This app costs ${priceText(app.price_cents)}. Buying it here opens soon.`),
+    ...exe.map((f) => fileRow(f, true, app.price_cents > 0)),
     docs.length > 0 && h("h3", {}, "Documents"),
-    ...docs.map((f) => fileRow(f, false)),
+    ...docs.map((f) => fileRow(f, false, app.price_cents > 0)),
   );
 }
 
-function fileRow(f, primary) {
+const priceText = (cents) => (Number(cents) > 0 ? `$${(cents / 100).toFixed(2)}` : "Free");
+
+function fileRow(f, primary, paid = false) {
   return h("div", { class: "stack", style: "gap:6px" },
     h("div", { class: "row between" },
       h("span", {}, h("strong", {}, f.file_name), h("span", { class: "muted small" }, `  ${fmtBytes(f.size_bytes)}`)),
-      h("a", { class: primary ? "btn" : "btn secondary small", href: downloadUrl(f.id), rel: "nofollow" }, primary ? "Download" : "Open")),
+      paid
+        ? h("span", { class: "muted small" }, "Coming soon")
+        : h("a", { class: primary ? "btn" : "btn secondary small", href: downloadUrl(f.id), rel: "nofollow" }, primary ? "Download" : "Open")),
     h("span", { class: "mono muted" }, `SHA-256 ${f.sha256}`));
 }
 

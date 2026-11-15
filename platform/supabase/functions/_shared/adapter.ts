@@ -2,6 +2,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Ports } from "./pipeline.ts";
 import type { DownloadPorts } from "./handlers.ts";
+import type { FeePorts, Quote, WebhookPorts } from "./fees.ts";
 import { makeVirusTotal } from "./virustotal.ts";
 import { notConfiguredSandbox } from "./sandbox.ts";
 import { makeListingReviewer } from "./listing.ts";
@@ -93,11 +94,14 @@ export function downloadPorts(db: SupabaseClient): DownloadPorts {
   return {
     async findPublicFile(fileId) {
       // The public view only lists files of approved releases of published apps.
-      const pub = await db.from("published_release_files").select("id,release_id,file_name,kind").eq("id", fileId).maybeSingle();
+      const pub = await db.from("published_release_files").select("id,release_id,file_name,kind,app_price_cents").eq("id", fileId).maybeSingle();
       if (pub.error) throw new Error(`lookup: ${pub.error.message}`);
       if (!pub.data) return null;
       const row = must(await db.from("release_files").select("storage_path").eq("id", fileId).single(), "lookup path");
-      return { storagePath: row.storage_path, fileName: pub.data.file_name, releaseId: pub.data.release_id, kind: pub.data.kind };
+      return {
+        storagePath: row.storage_path, fileName: pub.data.file_name, releaseId: pub.data.release_id, kind: pub.data.kind,
+        paid: Number(pub.data.app_price_cents) > 0,
+      };
     },
     async signedUrl(path, seconds, downloadName) {
       const r = await db.storage.from(BUCKET).createSignedUrl(path, seconds, { download: downloadName });
@@ -106,6 +110,44 @@ export function downloadPorts(db: SupabaseClient): DownloadPorts {
     async logDownload(releaseId) {
       const r = await db.rpc("log_download", { p_release: releaseId });
       if (r.error) throw new Error(`log download: ${r.error.message}`);
+    },
+  };
+}
+
+export function feePorts(db: SupabaseClient): FeePorts {
+  const stripeKey = Deno.env.get("STRIPE_SECRET_KEY") ?? "";
+  return {
+    siteUrl: (Deno.env.get("SITE_URL") ?? "https://noodletechnology.com").replace(/\/$/, ""),
+    async quote(appId, renew) {
+      const app = await db.from("apps").select("developer_id,name").eq("id", appId).maybeSingle();
+      if (app.error) throw new Error(`load app: ${app.error.message}`);
+      if (!app.data) return null;
+      const q = await db.rpc("_listing_fee_quote", { p_app: appId, p_renew: renew });
+      if (q.error) throw new Error(q.error.message);
+      const row = (q.data as Array<{ kind: Quote["kind"]; tier: number; amount_cents: number }>)[0];
+      return { developerId: app.data.developer_id, appName: app.data.name, kind: row.kind, tier: row.tier, amountCents: row.amount_cents };
+    },
+    async createCheckout(form) {
+      if (!stripeKey) throw new Error("STRIPE_SECRET_KEY is not set");
+      const res = await fetch("https://api.stripe.com/v1/checkout/sessions", {
+        method: "POST",
+        headers: { authorization: `Bearer ${stripeKey}`, "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams(form),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(`stripe: ${body?.error?.message ?? res.status}`);
+      return { id: body.id, url: body.url };
+    },
+  };
+}
+
+export function webhookPorts(db: SupabaseClient): WebhookPorts {
+  return {
+    async recordPayment(p) {
+      const r = await db.rpc("record_listing_payment", {
+        p_app: p.appId, p_kind: p.kind, p_tier: p.tier, p_amount_cents: p.amountCents, p_session: p.sessionId,
+      });
+      if (r.error) throw new Error(`record payment: ${r.error.message}`);
     },
   };
 }
