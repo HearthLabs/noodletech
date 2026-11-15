@@ -252,8 +252,8 @@ const bigFile = (rel, name, bytes) => as('authenticated', C, `insert into releas
 const tier = async (bytes) => (await as('anon', '', `select listing_tier(${bytes}) as t`)).rows[0].t;
 check('tier 1 up to 250 MB', (await tier(250 * MB)) === 1);
 check('tier 2 just over 250 MB', (await tier(250 * MB + 1)) === 2);
-check('tier 3 over 1 GB', (await tier(1024 * MB + 1)) === 3);
-check('over 5 GB has no tier', (await tier(5120 * MB + 1)) === null);
+check('tier 2 up to 1 GB', (await tier(1024 * MB)) === 2);
+check('over 1 GB has no tier', (await tier(1024 * MB + 1)) === null);
 check('catalog shows the price', cat.rows.find(r => r.slug === 'echo')?.price_cents === 0);
 
 // a bigger release of a live app waits for the upgrade, then goes live by itself
@@ -277,11 +277,11 @@ check('quote: nothing due now', (await as('authenticated', C, `select * from lis
 const qr = (await as('authenticated', C, `select * from listing_fee_quote('${eApp}', true)`)).rows?.[0];
 check('quote: early renewal is a year at tier 2', qr?.kind === 'renewal' && qr?.amount_cents === 2500);
 
-// files over 5 GB in one release are refused
+// files over 1 GB in one release are refused
 await as('authenticated', C, `insert into releases(app_id,version) values ('${eApp}','3.0')`);
 const eHuge = (await as('authenticated', C, `select id from releases where app_id='${eApp}' and version='3.0'`)).rows[0].id;
-check('first 4 GB file is accepted', (await bigFile(eHuge, 'Part1.exe', 4096 * MB)).ok);
-check('a release over 5 GB in total is refused', !(await bigFile(eHuge, 'Part2.exe', 2048 * MB)).ok);
+check('first 900 MB file is accepted', (await bigFile(eHuge, 'Part1.exe', 900 * MB)).ok);
+check('a release over 1 GB in total is refused', !(await bigFile(eHuge, 'Part2.exe', 200 * MB)).ok);
 
 // price can change while the app is live
 check('dev changes the price of a live app', (await as('authenticated', C, `select set_app_price('${eApp}', 1500)`)).ok &&
@@ -298,7 +298,35 @@ check('quote: lapsed app renews at its size tier', ql?.kind === 'renewal' && ql?
 check('renewal recorded', (await pay(eApp, 'renewal', 2, 2500, 'cs_e3')).ok);
 check('renewal puts the app back in the store', (await as('anon', '', `select count(*)::int as n from published_apps where slug='echo'`)).rows[0].n === 1);
 const renewed = (await as('service_role', '', `select listed_until from apps where id='${eApp}'`)).rows[0].listed_until;
-check('renewal runs a year from now', +renewed > Date.now() + 360 * 864e5);
+check('one fee covers three years', +renewed > Date.now() + 3 * 364 * 864e5 && +renewed < Date.now() + 3 * 367 * 864e5);
+
+// extra fees asked by an admin
+check('developer cannot ask for a fee', !(await as('authenticated', C, `select admin_request_fee('${eApp}', 2000, 'downloads', 30)`)).ok);
+check('admin must give at least 7 days', !(await as('authenticated', ADM, `select admin_request_fee('${eApp}', 2000, 'downloads', 3)`)).ok);
+const reqId = (await as('authenticated', ADM, `select admin_request_fee('${eApp}', 2000, 'Downloads ran high this year', 30) as id`)).rows?.[0]?.id;
+check('admin asks for an extra fee', !!reqId);
+check('developer sees the request', (await as('authenticated', C, `select * from fee_requests where id='${reqId}'`)).rows?.length === 1);
+check('other developers do not', (await as('authenticated', B, `select * from fee_requests`)).rows?.length === 0);
+check('app stays listed before the due date', (await as('service_role', '', `select expire_listings()`)).ok &&
+  (await as('anon', '', `select count(*)::int as n from published_apps where slug='echo'`)).rows[0].n === 1);
+await as('service_role', '', `update fee_requests set due_at = now() - interval '1 minute' where id='${reqId}'`);
+await as('service_role', '', `select expire_listings()`);
+check('unpaid fee past its due date takes the app out', (await as('anon', '', `select count(*)::int as n from published_apps where slug='echo'`)).rows[0].n === 0);
+check('submit is blocked while it is owed', !(await as('authenticated', C, `select submit_app_for_review('${eApp}')`)).ok);
+check('browser cannot record the payment', !(await as('authenticated', C, `select record_fee_request_payment('${reqId}', 2000, 'cs_x1')`)).ok);
+check('wrong amount is refused', !(await as('service_role', '', `select record_fee_request_payment('${reqId}', 100, 'cs_x1')`)).ok);
+check('server records the extra fee', (await as('service_role', '', `select record_fee_request_payment('${reqId}', 2000, 'cs_x1')`)).ok);
+check('paying puts the app back', (await as('anon', '', `select count(*)::int as n from published_apps where slug='echo'`)).rows[0].n === 1);
+check('request is marked paid', (await as('service_role', '', `select status from fee_requests where id='${reqId}'`)).rows[0].status === 'paid');
+check('paying twice records once', (await as('service_role', '', `select record_fee_request_payment('${reqId}', 2000, 'cs_x1')`)).ok &&
+  (await as('service_role', '', `select count(*)::int as n from listing_payments where kind='extra'`)).rows[0].n === 1);
+const req2 = (await as('authenticated', ADM, `select admin_request_fee('${eApp}', 1000, 'test', 7) as id`)).rows[0].id;
+await as('service_role', '', `update fee_requests set due_at = now() - interval '1 minute' where id='${req2}'`);
+await as('service_role', '', `select expire_listings()`);
+check('admin can cancel a request and the app comes back', (await as('authenticated', ADM, `select admin_cancel_fee_request('${req2}')`)).ok &&
+  (await as('anon', '', `select count(*)::int as n from published_apps where slug='echo'`)).rows[0].n === 1);
+check('admin removes an app', (await as('authenticated', ADM, `select admin_set_app_status('${eApp}', 'delisted')`)).ok &&
+  (await as('anon', '', `select count(*)::int as n from published_apps where slug='echo'`)).rows[0].n === 0);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

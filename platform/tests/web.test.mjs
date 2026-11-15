@@ -47,7 +47,8 @@ test("upload checks: wrong types, empty files, odd names and duplicates are expl
   assert.match(validateSelection(f("App.exe", 0), [])[0], /is empty/);
   assert.match(validateSelection(f("../App.exe"), []).join(" "), /file names may use/);
   assert.match(validateSelection(f("App.exe"), [f("app.EXE.txt"), f("APP.exe.TXT")]).join(" "), /Two files are named/);
-  assert.match(validateSelection(f("App.exe", 6 * 1024 ** 3), []).join(" "), /larger than 5 GB/);
+  assert.match(validateSelection(f("App.exe", 2 * 1024 ** 3), []).join(" "), /larger than 1 GB/);
+  assert.match(validateSelection(f("App.exe", 700 * 1024 ** 2), [f("Manual.pdf", 400 * 1024 ** 2)]).join(" "), /together can be at most 1 GB/);
 });
 test("upload checks: at most 20 files", () => {
   const docs = Array.from({ length: 20 }, (_, i) => f(`d${i}.txt`));

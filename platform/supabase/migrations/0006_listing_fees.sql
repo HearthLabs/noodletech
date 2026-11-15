@@ -1,14 +1,18 @@
 -- Listing fees and developer-set prices.
 --
--- Every app pays a yearly listing fee before it goes live, set by the size of its releases
--- (the total of the files in one release, using the largest release that is live or waiting):
---   tier 1  up to 250 MB   $15 a year
---   tier 2  up to 1 GB     $25 a year
---   tier 3  up to 5 GB     $49 a year
---   over 5 GB is not accepted.
+-- Every app pays a registration fee before it goes live. One fee covers listing_term()
+-- (3 years), and is set by the size of its releases (the total of the files in one release,
+-- using the largest release that is live or waiting):
+--   tier 1  up to 250 MB   $15
+--   tier 2  up to 1 GB     $25
+--   over 1 GB is not accepted.
 -- A release in a bigger tier than the one paid for needs an upgrade (the difference in price,
--- same end date) before it can go live. When the year runs out the app returns to draft and
+-- same end date) before it can go live. When the term runs out the app returns to draft and
 -- leaves the store; renewing puts it straight back.
+--
+-- Admins can also remove an app (admin_set_app_status 'delisted'), or ask its developer for an
+-- extra fee to cover costs such as heavy downloads (admin_request_fee). An extra fee left unpaid
+-- past its due date takes the app out of the store until it is paid.
 --
 -- Payments are taken by Stripe Checkout in the `listing-fee` function and recorded only by the
 -- `stripe-webhook` function (service role) through record_listing_payment.
@@ -22,25 +26,28 @@ language sql immutable as $$
   select case
     when p_bytes <= 250::bigint * 1024 * 1024  then 1
     when p_bytes <= 1024::bigint * 1024 * 1024 then 2
-    when p_bytes <= 5120::bigint * 1024 * 1024 then 3
     else null end::smallint
 $$;
 
 create function public.listing_tier_price(p_tier smallint) returns integer
 language sql immutable as $$
-  select case p_tier when 1 then 1500 when 2 then 2500 when 3 then 4900 end
+  select case p_tier when 1 then 1500 when 2 then 2500 end
 $$;
+
+-- How long one registration fee keeps an app listed. Change it here only.
+create function public.listing_term() returns interval
+language sql immutable as $$ select interval '3 years' $$;
 
 create function public.release_size(p_release uuid) returns bigint
 language sql stable security definer set search_path = public as $$
   select coalesce(sum(size_bytes), 0)::bigint from public.release_files where release_id = p_release
 $$;
 
--- One release may not hold more than 5 GB in total.
+-- One release may not hold more than 1 GB in total.
 create function public.release_size_limit() returns trigger language plpgsql as $$
 begin
-  if public.release_size(new.release_id) + new.size_bytes > 5120::bigint * 1024 * 1024 then
-    raise exception 'a release can hold at most 5 GB of files';
+  if public.release_size(new.release_id) + new.size_bytes > 1024::bigint * 1024 * 1024 then
+    raise exception 'a release can hold at most 1 GB of files';
   end if;
   return new;
 end $$;
@@ -50,7 +57,7 @@ create trigger release_files_size_limit before insert on public.release_files
 -- -------------------------------------------------------------- app columns
 alter table public.apps
   add column listed_until timestamptz,
-  add column paid_tier    smallint check (paid_tier between 1 and 3);
+  add column paid_tier    smallint check (paid_tier between 1 and 2);
 
 -- Prices: free, or US$1 to US$1,000.
 alter table public.apps drop constraint apps_price_cents_check;
@@ -67,8 +74,8 @@ create table public.listing_payments (
   id                 uuid primary key default gen_random_uuid(),
   app_id             uuid not null references public.apps on delete cascade,
   developer_id       uuid not null references public.developers on delete cascade,
-  kind               text not null check (kind in ('new', 'renewal', 'upgrade')),
-  tier               smallint not null check (tier between 1 and 3),
+  kind               text not null check (kind in ('new', 'renewal', 'upgrade', 'extra')),
+  tier               smallint check (tier between 1 and 2),
   amount_cents       integer not null check (amount_cents > 0),
   stripe_session_id  text not null unique,
   listed_until       timestamptz not null,
@@ -80,6 +87,87 @@ revoke all on public.listing_payments from anon, authenticated;
 grant select on public.listing_payments to authenticated;
 create policy listing_payments_select on public.listing_payments for select to authenticated
   using (developer_id = auth.uid() or public.is_admin());
+
+-- ------------------------------------------------------------ extra fees
+-- An admin asks a developer for an extra fee, for example when an app's downloads cost more
+-- than its registration fee covers. The developer sees it in the portal and pays by card.
+create table public.fee_requests (
+  id            uuid primary key default gen_random_uuid(),
+  app_id        uuid not null references public.apps on delete cascade,
+  developer_id  uuid not null references public.developers on delete cascade,
+  amount_cents  integer not null check (amount_cents between 100 and 100000),
+  reason        text not null check (char_length(reason) between 1 and 1000),
+  due_at        timestamptz not null,
+  status        text not null default 'open' check (status in ('open', 'paid', 'cancelled')),
+  stripe_session_id text unique,
+  created_by    uuid references auth.users,
+  created_at    timestamptz not null default now(),
+  paid_at       timestamptz
+);
+create index fee_requests_app_idx on public.fee_requests (app_id);
+alter table public.fee_requests enable row level security;
+revoke all on public.fee_requests from anon, authenticated;
+grant select on public.fee_requests to authenticated;
+create policy fee_requests_select on public.fee_requests for select to authenticated
+  using (developer_id = auth.uid() or public.is_admin());
+
+create function public.admin_request_fee(p_app uuid, p_amount_cents integer, p_reason text, p_days integer default 30)
+returns uuid language plpgsql security definer set search_path = public as $$
+declare v_dev uuid; v_id uuid;
+begin
+  if not public.is_admin() then raise exception 'admin only'; end if;
+  if p_days is null or p_days < 7 then raise exception 'give the developer at least 7 days'; end if;
+  select developer_id into v_dev from public.apps where id = p_app;
+  if v_dev is null then raise exception 'app not found'; end if;
+  insert into public.fee_requests (app_id, developer_id, amount_cents, reason, due_at, created_by)
+  values (p_app, v_dev, p_amount_cents, p_reason, now() + make_interval(days => p_days), auth.uid())
+  returning id into v_id;
+  return v_id;
+end $$;
+
+create function public.admin_cancel_fee_request(p_request uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare v_app uuid;
+begin
+  if not public.is_admin() then raise exception 'admin only'; end if;
+  update public.fee_requests set status = 'cancelled' where id = p_request and status = 'open'
+  returning app_id into v_app;
+  if v_app is null then raise exception 'no open request with that id'; end if;
+  perform public._relist_if_clear(v_app);
+end $$;
+
+-- An app with an unpaid extra fee past its due date stays out of the store.
+create function public._has_overdue_fee(p_app uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.fee_requests where app_id = p_app and status = 'open' and due_at <= now())
+$$;
+
+-- Puts an app that was taken out back in the store once nothing is owed.
+create function public._relist_if_clear(p_app uuid) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  update public.apps a set status = 'published'
+   where a.id = p_app and a.status = 'draft'
+     and a.listed_until is not null and a.listed_until > now()
+     and not public._has_overdue_fee(p_app)
+     and exists (select 1 from public.releases where app_id = p_app and status = 'approved');
+end $$;
+
+-- Called by the stripe-webhook function. Safe to call twice.
+create function public.record_fee_request_payment(p_request uuid, p_amount_cents integer, p_session text)
+returns void language plpgsql security definer set search_path = public as $$
+declare q record;
+begin
+  select * into q from public.fee_requests where id = p_request for update;
+  if not found then raise exception 'fee request not found'; end if;
+  if exists (select 1 from public.listing_payments where stripe_session_id = p_session) then return; end if;
+  if p_amount_cents <> q.amount_cents then raise exception 'paid amount does not match the request'; end if;
+  update public.fee_requests set status = 'paid', paid_at = now(), stripe_session_id = p_session where id = p_request;
+  insert into public.listing_payments (app_id, developer_id, kind, tier, amount_cents, stripe_session_id, listed_until)
+  select q.app_id, q.developer_id, 'extra', null, p_amount_cents, p_session, coalesce(a.listed_until, now())
+    from public.apps a where a.id = q.app_id;
+  perform public._relist_if_clear(q.app_id);
+end $$;
 
 -- ------------------------------------------------------------------ quotes
 -- Tier the app needs: its largest release that is waiting for review or live.
@@ -98,7 +186,7 @@ language sql stable security definer set search_path = public as $$
 $$;
 
 -- What the developer owes now. kind is 'none' when nothing is due.
--- With p_renew, a current listing is extended by a year at the larger of the paid and needed tier.
+-- With p_renew, a current listing is extended by one term at the larger of the paid and needed tier.
 create function public._listing_fee_quote(p_app uuid, p_renew boolean default false)
 returns table (kind text, tier smallint, amount_cents integer, needed_tier smallint,
                paid_tier smallint, listed_until timestamptz, largest_release_bytes bigint)
@@ -115,7 +203,7 @@ begin
     from public.releases r where r.app_id = p_app and r.status in ('in_review', 'approved');
   v_bytes := coalesce(v_bytes, 0);
   v_need := coalesce(public.listing_tier(v_bytes), 0);
-  if v_need = 0 and v_bytes > 0 then raise exception 'releases over 5 GB are not accepted'; end if;
+  if v_need = 0 and v_bytes > 0 then raise exception 'releases over 1 GB are not accepted'; end if;
   v_need := greatest(v_need, 1);
   v_active := a.listed_until is not null and a.listed_until > now();
 
@@ -158,7 +246,7 @@ declare
   r record;
 begin
   if p_kind not in ('new', 'renewal', 'upgrade') then raise exception 'unknown payment kind'; end if;
-  if p_tier not between 1 and 3 then raise exception 'unknown tier'; end if;
+  if p_tier not between 1 and 2 then raise exception 'unknown tier'; end if;
   select * into a from public.apps where id = p_app for update;
   if not found then raise exception 'app not found'; end if;
   if exists (select 1 from public.listing_payments where stripe_session_id = p_session) then
@@ -169,7 +257,7 @@ begin
     v_until := a.listed_until;
     update public.apps set paid_tier = greatest(coalesce(paid_tier, 1), p_tier) where id = p_app;
   else
-    v_until := greatest(coalesce(a.listed_until, now()), now()) + interval '1 year';
+    v_until := greatest(coalesce(a.listed_until, now()), now()) + public.listing_term();
     update public.apps
        set listed_until = v_until,
            paid_tier = case when a.listed_until > now() then greatest(coalesce(a.paid_tier, 1), p_tier) else p_tier end
@@ -189,10 +277,10 @@ begin
     values (r.id, 'auto_approved', 'Listing fee paid');
   end loop;
 
-  -- A listing that had run out goes back into the store when it is renewed.
-  if a.status = 'draft' and a.listed_until is not null
-     and exists (select 1 from public.releases where app_id = p_app and status = 'approved') then
-    update public.apps set status = 'published' where id = p_app;
+  -- A listing that had run out goes back into the store when it is renewed
+  -- (unless an extra fee is overdue).
+  if a.status = 'draft' and a.listed_until is not null then
+    perform public._relist_if_clear(p_app);
   elsif a.status = 'in_review'
      and exists (select 1 from public.releases where app_id = p_app and status = 'approved') then
     update public.apps set status = 'published' where id = p_app;
@@ -201,14 +289,16 @@ begin
 end $$;
 
 -- ------------------------------------------------------------- running out
--- Live apps whose year has ended go back to draft and leave the store. The scan-sweep
+-- Live apps whose term has ended, or with an extra fee unpaid past its due date, go back to
+-- draft and leave the store. The scan-sweep
 -- function calls this every few minutes.
 create function public.expire_listings() returns integer
 language plpgsql security definer set search_path = public as $$
 declare v_count integer;
 begin
-  update public.apps set status = 'draft'
-   where status in ('published', 'in_review') and listed_until <= now();
+  update public.apps a set status = 'draft'
+   where a.status in ('published', 'in_review')
+     and (a.listed_until <= now() or public._has_overdue_fee(a.id));
   get diagnostics v_count = row_count;
   return v_count;
 end $$;
@@ -242,7 +332,10 @@ begin
   end if;
   select * into q from public._listing_fee_quote(p_app);
   if q.kind <> 'none' then
-    raise exception 'pay the listing fee first ($% a year for this size)', (public.listing_tier_price(q.tier) / 100);
+    raise exception 'pay the listing fee first ($% for this size)', (q.amount_cents / 100);
+  end if;
+  if public._has_overdue_fee(p_app) then
+    raise exception 'pay the extra fee Noodle asked for first';
   end if;
   update public.apps set status = 'in_review' where id = p_app;
   if exists (select 1 from public.releases where app_id = p_app and status = 'approved') then
@@ -376,13 +469,20 @@ revoke all on function
   public._app_needed_tier(uuid), public._fee_covers(uuid, smallint),
   public._listing_fee_quote(uuid, boolean),
   public.record_listing_payment(uuid, text, smallint, integer, text),
-  public.expire_listings()
+  public.expire_listings(), public._has_overdue_fee(uuid), public._relist_if_clear(uuid),
+  public.record_fee_request_payment(uuid, integer, text)
   from public, anon, authenticated;
 grant execute on function
   public._listing_fee_quote(uuid, boolean),
   public.record_listing_payment(uuid, text, smallint, integer, text),
+  public.record_fee_request_payment(uuid, integer, text),
   public.expire_listings()
   to service_role;
+
+revoke all on function public.admin_request_fee(uuid, integer, text, integer), public.admin_cancel_fee_request(uuid)
+  from public, anon;
+grant execute on function public.admin_request_fee(uuid, integer, text, integer), public.admin_cancel_fee_request(uuid)
+  to authenticated;
 
 revoke all on function public.listing_fee_quote(uuid, boolean), public.set_app_price(uuid, integer),
   public.submit_app_for_review(uuid), public.admin_review_release(uuid, boolean, text)

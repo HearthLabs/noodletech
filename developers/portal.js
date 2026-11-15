@@ -82,7 +82,7 @@ function signedOut() {
       card("We host it", "Storage, bandwidth and a download page for your app."),
       card("We check every release", "Each upload is scanned before it's listed, so people can trust what they download."),
       card("You keep your rights", "Your app stays yours. We never ask for your source code, only the finished .exe and any documents."),
-      card("A yearly listing fee by size", "$15 a year for releases up to 250 MB, $25 up to 1 GB, $49 up to 5 GB. You pay by card before your app goes live."),
+      card("One fee covers 3 years", "$15 for releases up to 250 MB, $25 up to 1 GB. You pay by card before your app goes live, and renew every 3 years."),
       card("You set the price", "List your app free or set a price, and change it whenever you like. Buying paid apps opens soon; we keep 25% of sales.")),
     h("div", { class: "panel narrow" }, h("h2", {}, "Sign in or create an account"),
       h("p", { class: "muted" }, "No password. We email you a link."), form),
@@ -306,7 +306,8 @@ async function appPage(appId, justPaid = false) {
     status);
 
   if (justPaid) main.append(notice("good", "Thanks, your payment went through. It can take a minute to show here. Reload the page if it still says a fee is due."));
-  main.append(feePanel(app, releases, quote), pricePanel(app));
+  const requests = (await sb.from("fee_requests").select("*").eq("app_id", appId).order("created_at", { ascending: false })).data ?? [];
+  main.append(feePanel(app, releases, quote, requests), pricePanel(app));
 
   // Edit details
   const { els, read } = appFields(app);
@@ -354,12 +355,12 @@ async function appPage(appId, justPaid = false) {
 const TIERS = [
   { tier: 1, label: "Up to 250 MB", cents: 1500 },
   { tier: 2, label: "250 MB to 1 GB", cents: 2500 },
-  { tier: 3, label: "1 GB to 5 GB", cents: 4900 },
 ];
+const TERM_YEARS = 3; // matches listing_term() in migration 0006
 const dollars = (cents) => `$${(cents / 100).toFixed(cents % 100 ? 2 : 0)}`;
 const tierLabel = (t) => TIERS.find((x) => x.tier === t)?.label ?? "";
 
-function feePanel(app, releases, quote) {
+function feePanel(app, releases, quote, requests = []) {
   const status = h("div", { "aria-live": "polite" });
   const live = app.listed_until && new Date(app.listed_until) > new Date();
   const hasRelease = releases.some((r) => r.status === "in_review" || r.status === "approved");
@@ -380,25 +381,38 @@ function feePanel(app, releases, quote) {
     const size = fmtBytes(Number(quote.largest_release_bytes));
     const msg = quote.kind === "upgrade"
       ? `Your newest release (${size}) is bigger than your paid size. Upgrade for ${dollars(quote.amount_cents)} to cover it until ${fmtDate(app.listed_until)}. It goes live as soon as you pay.`
-      : `Your release is ${size}, so the listing fee is ${dollars(quote.amount_cents)} a year. Pay it to ${app.listed_until ? "put the app back in the store" : "submit the app"}.`;
-    lines.push(h("p", {}, msg), payButton(quote.kind === "upgrade" ? `Pay ${dollars(quote.amount_cents)} to upgrade` : `Pay ${dollars(quote.amount_cents)} for one year`));
+      : `Your release is ${size}, so the listing fee is ${dollars(quote.amount_cents)} for ${TERM_YEARS} years. Pay it to ${app.listed_until ? "put the app back in the store" : "submit the app"}.`;
+    lines.push(h("p", {}, msg), payButton(quote.kind === "upgrade" ? `Pay ${dollars(quote.amount_cents)} to upgrade` : `Pay ${dollars(quote.amount_cents)} for ${TERM_YEARS} years`));
   } else if (live && (new Date(app.listed_until) - Date.now()) < 30 * 864e5) {
-    lines.push(h("p", { class: "muted" }, "Renewing now adds a year to the end date."), payButton("Renew for another year", true));
+    lines.push(h("p", { class: "muted" }, `Renewing now adds ${TERM_YEARS} years to the end date.`), payButton(`Renew for another ${TERM_YEARS} years`, true));
+  }
+
+  for (const r of requests.filter((x) => x.status === "open")) {
+    const overdue = new Date(r.due_at) <= new Date();
+    lines.push(notice(overdue ? "error" : "warn",
+      h("strong", {}, `Extra fee requested: ${dollars(r.amount_cents)}. `), r.reason,
+      overdue ? " It is past due, so the app is out of the store until it is paid." : ` Pay by ${fmtDate(r.due_at)} to keep the app listed.`),
+      h("button", { class: "btn", onclick: async (e) => {
+        e.target.disabled = true; status.replaceChildren(notice("info", "Opening the secure payment page…"));
+        const out = await startFeeCheckout(app.id, false, r.id);
+        if (out.url) { location.href = out.url; return; }
+        e.target.disabled = false; status.replaceChildren(notice("error", out.error ?? "Couldn't start the payment. Try again in a moment."));
+      } }, `Pay ${dollars(r.amount_cents)}`));
   }
 
   return h("div", { class: "panel" }, h("h2", {}, "Listing fee"),
-    h("p", { class: "muted small" }, "Each app pays a yearly fee set by the size of one release: ",
-      TIERS.map((t) => `${t.label.replace(/^Up/, "up")} ${dollars(t.cents)}`).join(", "), ". Over 5 GB is not accepted."),
+    h("p", { class: "muted small" }, `One registration fee lists an app for ${TERM_YEARS} years. It is set by the size of one release: `,
+      TIERS.map((t) => `${t.label.replace(/^Up/, "up")} ${dollars(t.cents)}`).join(", "), ". Over 1 GB is not accepted."),
     ...lines, status);
 }
 
-async function startFeeCheckout(appId, renew) {
+async function startFeeCheckout(appId, renew, requestId) {
   const token = (await sb.auth.getSession()).data.session?.access_token;
   try {
     const res = await fetch(functionUrl("listing-fee"), {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${token}`, apikey: SUPABASE_ANON_KEY },
-      body: JSON.stringify({ app_id: appId, renew }),
+      body: JSON.stringify(requestId ? { request_id: requestId } : { app_id: appId, renew }),
     });
     return await res.json().catch(() => ({}));
   } catch {

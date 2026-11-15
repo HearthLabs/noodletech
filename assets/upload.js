@@ -1,7 +1,7 @@
 // Uploads a file straight to private storage with progress (the storage client has no progress events).
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "./config.js";
 
-export const MAX_FILE_BYTES = 5 * 1024 * 1024 * 1024; // matches the storage bucket limit
+export const MAX_FILE_BYTES = 1024 * 1024 * 1024; // matches the storage bucket limit and the 1 GB per release cap
 export const MAX_FILES = 20;
 export const DOC_EXTENSIONS = [".pdf", ".txt", ".md"];
 
@@ -17,12 +17,12 @@ export function validateSelection(exe, docs) {
       problems.push(`"${f.name}": file names may use letters, numbers, spaces, dots, dashes and underscores only (max 100 characters).`);
     }
     if (f.size <= 0) problems.push(`"${f.name}" is empty.`);
-    if (f.size > MAX_FILE_BYTES) problems.push(`"${f.name}" is larger than 5 GB.`);
+    if (f.size > MAX_FILE_BYTES) problems.push(`"${f.name}" is larger than 1 GB.`);
     const key = f.name.toLowerCase();
     if (seen.has(key)) problems.push(`Two files are named "${f.name}".`);
     seen.add(key);
   }
-  if (all.reduce((n, f) => n + f.size, 0) > MAX_FILE_BYTES) problems.push("All the files in one release together can be at most 5 GB.");
+  if (all.reduce((n, f) => n + f.size, 0) > MAX_FILE_BYTES) problems.push("All the files in one release together can be at most 1 GB.");
   for (const d of docs) {
     if (!DOC_EXTENSIONS.some((ext) => d.name.toLowerCase().endsWith(ext))) {
       problems.push(`"${d.name}": documents must be PDF, TXT or Markdown (.pdf, .txt, .md).`);

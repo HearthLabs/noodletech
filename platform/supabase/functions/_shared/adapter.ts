@@ -127,6 +127,16 @@ export function feePorts(db: SupabaseClient): FeePorts {
       const row = (q.data as Array<{ kind: Quote["kind"]; tier: number; amount_cents: number }>)[0];
       return { developerId: app.data.developer_id, appName: app.data.name, kind: row.kind, tier: row.tier, amountCents: row.amount_cents };
     },
+    async feeRequest(id) {
+      const r = await db.from("fee_requests").select("id,app_id,developer_id,amount_cents,status, apps(name)").eq("id", id).maybeSingle();
+      if (r.error) throw new Error(`load fee request: ${r.error.message}`);
+      if (!r.data) return null;
+      const app = r.data.apps as unknown as { name: string } | null;
+      return {
+        id: r.data.id, appId: r.data.app_id, developerId: r.data.developer_id, appName: app?.name ?? "Your app",
+        amountCents: r.data.amount_cents, status: r.data.status,
+      };
+    },
     async createCheckout(form) {
       if (!stripeKey) throw new Error("STRIPE_SECRET_KEY is not set");
       const res = await fetch("https://api.stripe.com/v1/checkout/sessions", {
@@ -148,6 +158,10 @@ export function webhookPorts(db: SupabaseClient): WebhookPorts {
         p_app: p.appId, p_kind: p.kind, p_tier: p.tier, p_amount_cents: p.amountCents, p_session: p.sessionId,
       });
       if (r.error) throw new Error(`record payment: ${r.error.message}`);
+    },
+    async recordExtraFee(p) {
+      const r = await db.rpc("record_fee_request_payment", { p_request: p.requestId, p_amount_cents: p.amountCents, p_session: p.sessionId });
+      if (r.error) throw new Error(`record extra fee: ${r.error.message}`);
     },
   };
 }
