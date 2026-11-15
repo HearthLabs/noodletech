@@ -4,6 +4,18 @@ import { mountFrame } from "../assets/layout.js";
 
 const main = mountFrame("store");
 
+// Noodle Technology's own apps. They are listed like any other app, but they live on their
+// own sites rather than in the database, so the list adds them here.
+const FIRST_PARTY = [
+  {
+    name: "Noodle LLM",
+    summary: "Run AI models privately on your own PC. Your conversations stay on your computer.",
+    category: "AI and automation",
+    developer_name: "Noodle Technology",
+    url: "https://noodlellm.com",
+  },
+];
+
 const CATEGORIES = ["Productivity", "Utilities", "Developer tools", "AI and automation", "Creative", "Games", "Education", "Other"];
 
 function route() {
@@ -38,40 +50,58 @@ async function catalogPage() {
       h("span", {}, "Run AI models privately on your own PC. Your conversations stay on your computer."),
       h("span", { class: "meta" }, "noodlellm.com ↗")),
   );
-  if (!configured) return;
-
   const list = h("div", { class: "grid", "aria-live": "polite" });
+  const invite = h("div");
   const search = h("input", { type: "search", placeholder: "Search apps", "aria-label": "Search apps" });
   const category = h("select", { "aria-label": "Category" },
     h("option", { value: "" }, "All categories"), ...CATEGORIES.map((c) => h("option", { value: c }, c)));
-  main.append(h("div", { class: "row" }, h("div", { style: "flex:1;min-width:12rem" }, search), h("div", { style: "min-width:11rem" }, category)), list);
+  main.append(h("div", { class: "row" }, h("div", { style: "flex:1;min-width:12rem" }, search), h("div", { style: "min-width:11rem" }, category)), list, invite);
 
-  const apps = ok(await sb.from("published_apps").select("*").order("updated_at", { ascending: false }), "Loading apps");
+  // Our own apps are listed even when the database can't be reached, so the list is never empty.
+  let apps = [];
+  let loadError = null;
+  if (configured) {
+    try {
+      apps = ok(await sb.from("published_apps").select("*").order("updated_at", { ascending: false }), "Loading apps");
+    } catch (e) {
+      loadError = e;
+    }
+  }
+  const all = [...FIRST_PARTY, ...apps];
+
+  if (loadError) invite.append(notice("error", loadError.message));
+  else if (apps.length === 0) {
+    invite.append(h("div", { class: "panel", style: "margin-top:16px" },
+      h("p", { class: "muted" }, "The first independent apps are on their way. Built something for Windows? "),
+      h("a", { class: "btn secondary", href: "/developers/" }, "Publish your app")));
+  }
+
   const draw = () => {
     const q = search.value.trim().toLowerCase();
-    const shown = apps.filter((a) =>
+    const shown = all.filter((a) =>
       (!category.value || a.category === category.value) &&
       (!q || a.name.toLowerCase().includes(q) || a.summary.toLowerCase().includes(q)));
     clear(list);
-    if (apps.length === 0) {
-      list.append(h("div", { class: "panel", style: "grid-column:1/-1" },
-        h("h3", {}, "No apps yet"),
-        h("p", { class: "muted" }, "The first independent apps are on their way. Built something for Windows? "),
-        h("a", { class: "btn secondary", href: "/developers/" }, "Publish your app")));
-    } else if (shown.length === 0) {
-      list.append(h("p", { class: "muted" }, "No apps match that search."));
-    }
-    for (const a of shown) {
-      list.append(h("a", { class: "card", href: `#/app/${a.slug}` },
-        a.category && h("span", { class: "eyebrow", style: "margin:0" }, a.category),
-        h("h3", {}, a.name),
-        h("span", {}, a.summary),
-        h("span", { class: "meta" }, `by ${a.developer_name}`, Number(a.downloads) > 0 ? ` · ${Number(a.downloads).toLocaleString()} downloads` : "")));
-    }
+    if (shown.length === 0) list.append(h("p", { class: "muted" }, "No apps match that search."));
+    for (const a of shown) list.append(appCard(a));
   };
   search.addEventListener("input", draw);
   category.addEventListener("change", draw);
   draw();
+}
+
+function appCard(a) {
+  const own = Boolean(a.url);
+  const attrs = own
+    ? { class: "card", href: a.url, target: "_blank", rel: "noopener" }
+    : { class: "card", href: `#/app/${a.slug}` };
+  return h("a", attrs,
+    a.category && h("span", { class: "eyebrow", style: "margin:0" }, a.category),
+    h("h3", {}, a.name),
+    h("span", {}, a.summary),
+    h("span", { class: "meta" }, `by ${a.developer_name}`,
+      Number(a.downloads) > 0 ? ` · ${Number(a.downloads).toLocaleString()} downloads` : "",
+      own ? ` · ${new URL(a.url).hostname} ↗` : ""));
 }
 
 // ------------------------------------------------------------------ app page
