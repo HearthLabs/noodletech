@@ -2,9 +2,9 @@
 --
 -- Every app pays a yearly listing fee before it goes live, set by the size of its releases
 -- (the total of the files in one release, using the largest release that is live or waiting):
---   tier 1  up to 250 MB   $19 a year
---   tier 2  up to 1 GB     $39 a year
---   tier 3  up to 5 GB     $99 a year
+--   tier 1  up to 250 MB   $15 a year
+--   tier 2  up to 1 GB     $25 a year
+--   tier 3  up to 5 GB     $49 a year
 --   over 5 GB is not accepted.
 -- A release in a bigger tier than the one paid for needs an upgrade (the difference in price,
 -- same end date) before it can go live. When the year runs out the app returns to draft and
@@ -28,7 +28,7 @@ $$;
 
 create function public.listing_tier_price(p_tier smallint) returns integer
 language sql immutable as $$
-  select case p_tier when 1 then 1900 when 2 then 3900 when 3 then 9900 end
+  select case p_tier when 1 then 1500 when 2 then 2500 when 3 then 4900 end
 $$;
 
 create function public.release_size(p_release uuid) returns bigint

@@ -450,7 +450,7 @@ function fees(q: Partial<Quote> | null | Error, renewSeen: boolean[] = []) {
     quote: (id, renew) => {
       renewSeen.push(renew);
       if (q instanceof Error) return Promise.reject(q);
-      return Promise.resolve(q && id === APP ? { developerId: FEE_DEV, appName: "Echo", kind: "new", tier: 2, amountCents: 3900, ...q } as Quote : null);
+      return Promise.resolve(q && id === APP ? { developerId: FEE_DEV, appName: "Echo", kind: "new", tier: 2, amountCents: 2500, ...q } as Quote : null);
     },
     createCheckout: (form) => { forms.push(form); return Promise.resolve({ id: "cs_1", url: "https://checkout.stripe.com/c/cs_1" }); },
   };
@@ -461,7 +461,7 @@ test("listing fee: starts a Stripe Checkout for the amount due", async () => {
   const r = await handleListingFee({ app_id: APP }, { id: FEE_DEV, email: "d@x.io" }, f.ports);
   assert.equal(r.status, 200); assert.equal((await r.json()).url, "https://checkout.stripe.com/c/cs_1");
   const form = f.forms[0];
-  assert.equal(form.mode, "payment"); assert.equal(form["line_items[0][price_data][unit_amount]"], "3900");
+  assert.equal(form.mode, "payment"); assert.equal(form["line_items[0][price_data][unit_amount]"], "2500");
   assert.equal(form["line_items[0][price_data][currency]"], "usd");
   assert.equal(form["metadata[purpose]"], "listing_fee"); assert.equal(form["metadata[app_id]"], APP);
   assert.equal(form["metadata[tier]"], "2"); assert.equal(form["metadata[kind]"], "new");
@@ -500,14 +500,14 @@ test("stripe webhook: signature must match and be recent", async () => {
 });
 function paidEvent(over: Record<string, unknown> = {}, meta: Record<string, string> = {}) {
   return { type: "checkout.session.completed", data: { object: {
-    id: "cs_9", payment_status: "paid", amount_total: 1900, currency: "usd",
-    metadata: { purpose: "listing_fee", app_id: APP, kind: "new", tier: "1", amount_cents: "1900", ...meta }, ...over } } };
+    id: "cs_9", payment_status: "paid", amount_total: 1500, currency: "usd",
+    metadata: { purpose: "listing_fee", app_id: APP, kind: "new", tier: "1", amount_cents: "1500", ...meta }, ...over } } };
 }
 test("stripe webhook: records a paid listing fee once the amount matches", async () => {
   const rec: unknown[] = [];
   const ports = { recordPayment: (p: unknown) => { rec.push(p); return Promise.resolve(); } };
   assert.equal((await handleStripeEvent(paidEvent(), ports)).status, 200);
-  assert.deepEqual(rec, [{ appId: APP, kind: "new", tier: 1, amountCents: 1900, sessionId: "cs_9" }]);
+  assert.deepEqual(rec, [{ appId: APP, kind: "new", tier: 1, amountCents: 1500, sessionId: "cs_9" }]);
   assert.equal((await handleStripeEvent(paidEvent({ amount_total: 100 }), ports)).status, 400);
   assert.equal((await handleStripeEvent(paidEvent({}, { tier: "7" }), ports)).status, 400);
   assert.equal((await handleStripeEvent(paidEvent({ payment_status: "unpaid" }), ports)).status, 200);

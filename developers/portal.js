@@ -82,7 +82,7 @@ function signedOut() {
       card("We host it", "Storage, bandwidth and a download page for your app."),
       card("We check every release", "Each upload is scanned before it's listed, so people can trust what they download."),
       card("You keep your rights", "Your app stays yours. We never ask for your source code, only the finished .exe and any documents."),
-      card("A yearly listing fee by size", "$19 a year for releases up to 250 MB, $39 up to 1 GB, $99 up to 5 GB. You pay by card before your app goes live."),
+      card("A yearly listing fee by size", "$15 a year for releases up to 250 MB, $25 up to 1 GB, $49 up to 5 GB. You pay by card before your app goes live."),
       card("You set the price", "List your app free or set a price, and change it whenever you like. Buying paid apps opens soon; we keep 25% of sales.")),
     h("div", { class: "panel narrow" }, h("h2", {}, "Sign in or create an account"),
       h("p", { class: "muted" }, "No password. We email you a link."), form),
@@ -352,9 +352,9 @@ async function appPage(appId, justPaid = false) {
 
 // ------------------------------------------------------------ listing fee
 const TIERS = [
-  { tier: 1, label: "Up to 250 MB", cents: 1900 },
-  { tier: 2, label: "250 MB to 1 GB", cents: 3900 },
-  { tier: 3, label: "1 GB to 5 GB", cents: 9900 },
+  { tier: 1, label: "Up to 250 MB", cents: 1500 },
+  { tier: 2, label: "250 MB to 1 GB", cents: 2500 },
+  { tier: 3, label: "1 GB to 5 GB", cents: 4900 },
 ];
 const dollars = (cents) => `$${(cents / 100).toFixed(cents % 100 ? 2 : 0)}`;
 const tierLabel = (t) => TIERS.find((x) => x.tier === t)?.label ?? "";

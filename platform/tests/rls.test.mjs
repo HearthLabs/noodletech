@@ -103,11 +103,11 @@ check('dev A can read own scan', (await as('authenticated', A, `select * from sc
 check('dev B cannot read A scans', (await as('authenticated', B, `select * from scans`)).rows.length === 0);
 check('submit blocked until the listing fee is paid', /listing fee/.test((await as('authenticated', A, `select submit_app_for_review('${appId}')`)).err ?? ''));
 const q0 = (await as('authenticated', A, `select * from listing_fee_quote('${appId}')`)).rows?.[0];
-check('quote: small release is a new $19 listing', q0?.kind === 'new' && q0?.tier === 1 && q0?.amount_cents === 1900);
+check('quote: small release is a new $15 listing', q0?.kind === 'new' && q0?.tier === 1 && q0?.amount_cents === 1500);
 check('dev B cannot see A quote', !(await as('authenticated', B, `select * from listing_fee_quote('${appId}')`)).ok);
-check('browser cannot record a payment', !(await as('authenticated', A, `select record_listing_payment('${appId}','new',1::smallint,1900,'cs_fake')`)).ok);
+check('browser cannot record a payment', !(await as('authenticated', A, `select record_listing_payment('${appId}','new',1::smallint,1500,'cs_fake')`)).ok);
 const pay = (app, kind, tier, cents, sess) => as('service_role', '', `select record_listing_payment('${app}','${kind}',${tier}::smallint,${cents},'${sess}') as until`);
-check('server records the payment', (await pay(appId, 'new', 1, 1900, 'cs_a1')).ok);
+check('server records the payment', (await pay(appId, 'new', 1, 1500, 'cs_a1')).ok);
 check('dev A sees own payment', (await as('authenticated', A, `select * from listing_payments`)).rows?.length === 1);
 check('dev B cannot see A payments', (await as('authenticated', B, `select * from listing_payments`)).rows?.length === 0);
 check('submit works after scan passes and fee paid', (await as('authenticated', A, `select submit_app_for_review('${appId}')`)).ok);
@@ -173,7 +173,7 @@ check('held release waits in review with a hold flag', st.status === 'in_review'
 check('decision cannot be repeated', !(await decide(r1, 'green')).ok);
 check('admin cannot approve before hold ends', !(await as('authenticated', ADM, `select admin_review_release('${r1}', true, 'early')`)).ok);
 await as('service_role', '', `update releases set hold_until = now() - interval '1 minute' where id='${r1}'`);
-await pay(dApp, 'new', 1, 1900, 'cs_d1');
+await pay(dApp, 'new', 1, 1500, 'cs_d1');
 check('admin approves after hold ends', (await as('authenticated', ADM, `select admin_review_release('${r1}', true, 'ok')`)).ok);
 check('app published by approval', (await as('anon', '', `select slug from apps where slug='delta'`)).rows.length === 1);
 check('still trust 0 after one approval', (await as('authenticated', C, `select trust_level from developers where id='${C}'`)).rows[0].trust_level === 0);
@@ -220,7 +220,7 @@ await addFile(C, 'Echo.exe', 'executable', `${C}/echo/Echo.exe`, sha, eRel);
 check('trusted dev release auto-approves while app is still a draft', (await decide(eRel, 'green')).rows?.[0]?.d === 'auto_approved');
 check('draft app stays hidden until the developer submits', (await as('anon', '', `select count(*)::int as n from apps where slug='echo'`)).rows[0].n === 0);
 check('submit refused before the fee', !(await as('authenticated', C, `select submit_app_for_review('${eApp}')`)).ok);
-await pay(eApp, 'new', 1, 1900, 'cs_e1');
+await pay(eApp, 'new', 1, 1500, 'cs_e1');
 check('submit then publishes it', (await as('authenticated', C, `select submit_app_for_review('${eApp}')`)).ok &&
   (await as('anon', '', `select count(*)::int as n from apps where slug='echo'`)).rows[0].n === 1);
 
@@ -264,18 +264,18 @@ check('green release past the paid tier is held for the fee', (await decide(eBig
 st = await relStatus(eBig);
 check('it waits with the fee_due flag', st.status === 'in_review' && st.review_flag === 'fee_due');
 const qu = (await as('authenticated', C, `select * from listing_fee_quote('${eApp}')`)).rows?.[0];
-check('quote: upgrade to tier 2 costs the $20 difference', qu?.kind === 'upgrade' && qu?.tier === 2 && qu?.amount_cents === 2000);
+check('quote: upgrade to tier 2 costs the $10 difference', qu?.kind === 'upgrade' && qu?.tier === 2 && qu?.amount_cents === 1000);
 const untilBefore = (await as('service_role', '', `select listed_until from apps where id='${eApp}'`)).rows[0].listed_until;
-check('upgrade payment recorded', (await pay(eApp, 'upgrade', 2, 2000, 'cs_e2')).ok);
+check('upgrade payment recorded', (await pay(eApp, 'upgrade', 2, 1000, 'cs_e2')).ok);
 st = await relStatus(eBig);
 check('upgrade puts the waiting release live', st.status === 'approved' && st.review_flag === null);
 const afterUp = (await as('service_role', '', `select listed_until, paid_tier from apps where id='${eApp}'`)).rows[0];
 check('upgrade keeps the end date and raises the tier', +afterUp.listed_until === +untilBefore && afterUp.paid_tier === 2);
-check('same Stripe session twice is recorded once', (await pay(eApp, 'upgrade', 2, 2000, 'cs_e2')).ok &&
+check('same Stripe session twice is recorded once', (await pay(eApp, 'upgrade', 2, 1000, 'cs_e2')).ok &&
   (await as('service_role', '', `select count(*)::int as n from listing_payments where app_id='${eApp}'`)).rows[0].n === 2);
 check('quote: nothing due now', (await as('authenticated', C, `select * from listing_fee_quote('${eApp}')`)).rows?.[0]?.kind === 'none');
 const qr = (await as('authenticated', C, `select * from listing_fee_quote('${eApp}', true)`)).rows?.[0];
-check('quote: early renewal is a year at tier 2', qr?.kind === 'renewal' && qr?.amount_cents === 3900);
+check('quote: early renewal is a year at tier 2', qr?.kind === 'renewal' && qr?.amount_cents === 2500);
 
 // files over 5 GB in one release are refused
 await as('authenticated', C, `insert into releases(app_id,version) values ('${eApp}','3.0')`);
@@ -294,8 +294,8 @@ check('browser cannot run the expiry', !(await as('authenticated', C, `select ex
 check('expiry takes lapsed apps out', (await as('service_role', '', `select expire_listings() as n`)).rows[0].n >= 1 &&
   (await as('anon', '', `select count(*)::int as n from published_apps where slug='echo'`)).rows[0].n === 0);
 const ql = (await as('authenticated', C, `select * from listing_fee_quote('${eApp}')`)).rows?.[0];
-check('quote: lapsed app renews at its size tier', ql?.kind === 'renewal' && ql?.tier === 2 && ql?.amount_cents === 3900);
-check('renewal recorded', (await pay(eApp, 'renewal', 2, 3900, 'cs_e3')).ok);
+check('quote: lapsed app renews at its size tier', ql?.kind === 'renewal' && ql?.tier === 2 && ql?.amount_cents === 2500);
+check('renewal recorded', (await pay(eApp, 'renewal', 2, 2500, 'cs_e3')).ok);
 check('renewal puts the app back in the store', (await as('anon', '', `select count(*)::int as n from published_apps where slug='echo'`)).rows[0].n === 1);
 const renewed = (await as('service_role', '', `select listed_until from apps where id='${eApp}'`)).rows[0].listed_until;
 check('renewal runs a year from now', +renewed > Date.now() + 360 * 864e5);
