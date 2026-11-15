@@ -4,14 +4,14 @@ import { mountFrame } from "../assets/layout.js";
 
 const main = mountFrame("store");
 
-// Noodle Technology's own apps. They are listed like any other app, but they live on their
-// own sites rather than in the database, so the list adds them here.
-const FIRST_PARTY = [
+// Apps listed from outside the marketplace: made and hosted elsewhere, so they are not rows in
+// the database. Each card links out to the app's own site, where its own terms apply.
+const LINKED_APPS = [
   {
     name: "Noodle LLM",
     summary: "Run AI models privately on your own PC. Your conversations stay on your computer.",
     category: "AI and automation",
-    developer_name: "Noodle Technology",
+    developer_name: "Noodle LLM",
     url: "https://noodlellm.com",
   },
 ];
@@ -44,11 +44,6 @@ async function catalogPage() {
       h("p", { class: "eyebrow" }, "App marketplace"),
       h("h1", {}, "Windows apps, checked before you download."),
       h("p", { class: "lede" }, "Independent developers publish here. Every release is scanned for malware before it is listed. A scan lowers the risk but can't guarantee an app is safe.")),
-    h("a", { class: "card", href: "https://noodlellm.com", target: "_blank", rel: "noopener" },
-      h("span", { class: "eyebrow" }, "Featured · by Noodle Technology"),
-      h("h3", {}, "Noodle LLM"),
-      h("span", {}, "Run AI models privately on your own PC. Your conversations stay on your computer."),
-      h("span", { class: "meta" }, "noodlellm.com ↗")),
   );
   const list = h("div", { class: "grid", "aria-live": "polite" });
   const invite = h("div");
@@ -57,7 +52,7 @@ async function catalogPage() {
     h("option", { value: "" }, "All categories"), ...CATEGORIES.map((c) => h("option", { value: c }, c)));
   main.append(h("div", { class: "row" }, h("div", { style: "flex:1;min-width:12rem" }, search), h("div", { style: "min-width:11rem" }, category)), list, invite);
 
-  // Our own apps are listed even when the database can't be reached, so the list is never empty.
+  // Linked apps are listed even when the database can't be reached, so the list is never empty.
   let apps = [];
   let loadError = null;
   if (configured) {
@@ -67,7 +62,7 @@ async function catalogPage() {
       loadError = e;
     }
   }
-  const all = [...FIRST_PARTY, ...apps];
+  const all = [...LINKED_APPS, ...apps];
 
   if (loadError) invite.append(notice("error", loadError.message));
   else if (apps.length === 0) {
