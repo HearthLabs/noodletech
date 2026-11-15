@@ -9,6 +9,7 @@ import { makeListingReviewer } from "../supabase/functions/_shared/listing.ts";
 import { summarize } from "../supabase/functions/_shared/scoring.ts";
 import { type Ports, ScanError, scanRelease } from "../supabase/functions/_shared/pipeline.ts";
 import { corsHeaders, handleDownload, handleScan, safeEqual } from "../supabase/functions/_shared/handlers.ts";
+import { checkoutForm, handleListingFee, handleStripeEvent, verifyStripeSignature, type FeePorts, type Quote } from "../supabase/functions/_shared/fees.ts";
 import type { FileRow, ReleaseBundle, StageResult } from "../supabase/functions/_shared/types.ts";
 
 // ------------------------------------------------------------ test helpers
@@ -437,4 +438,114 @@ test("cors: only allow-listed origins get access headers", () => {
   for (const o of ["https://evil.example", "http://noodletechnology.com", null]) {
     assert.equal(corsHeaders(o, allowed)["access-control-allow-origin"], undefined);
   }
+});
+
+// ------------------------------------------------------------- listing fees
+const APP = "66666666-6666-4666-8666-666666666666";
+const FEE_DEV = "77777777-7777-4777-8777-777777777777";
+function fees(q: Partial<Quote> | null | Error, renewSeen: boolean[] = []) {
+  const forms: Record<string, string>[] = [];
+  const ports: FeePorts = {
+    siteUrl: "https://noodletechnology.com",
+    quote: (id, renew) => {
+      renewSeen.push(renew);
+      if (q instanceof Error) return Promise.reject(q);
+      return Promise.resolve(q && id === APP ? { developerId: FEE_DEV, appName: "Echo", kind: "new", tier: 2, amountCents: 2500, ...q } as Quote : null);
+    },
+    createCheckout: (form) => { forms.push(form); return Promise.resolve({ id: "cs_1", url: "https://checkout.stripe.com/c/cs_1" }); },
+    feeRequest: () => Promise.resolve(null),
+  };
+  return { ports, forms };
+}
+test("listing fee: starts a Stripe Checkout for the amount due", async () => {
+  const f = fees({});
+  const r = await handleListingFee({ app_id: APP }, { id: FEE_DEV, email: "d@x.io" }, f.ports);
+  assert.equal(r.status, 200); assert.equal((await r.json()).url, "https://checkout.stripe.com/c/cs_1");
+  const form = f.forms[0];
+  assert.equal(form.mode, "payment"); assert.equal(form["line_items[0][price_data][unit_amount]"], "2500");
+  assert.equal(form["line_items[0][price_data][currency]"], "usd");
+  assert.equal(form["metadata[purpose]"], "listing_fee"); assert.equal(form["metadata[app_id]"], APP);
+  assert.equal(form["metadata[tier]"], "2"); assert.equal(form["metadata[kind]"], "new");
+  assert.equal(form.customer_email, "d@x.io");
+  assert.match(form.success_url, /^https:\/\/noodletechnology\.com\/developers\//);
+});
+test("listing fee: someone else's app, nothing due, bad id, too big", async () => {
+  assert.equal((await handleListingFee({ app_id: APP }, { id: "someone-else" }, fees({}).ports)).status, 404);
+  assert.equal((await handleListingFee({ app_id: APP }, { id: FEE_DEV }, fees(null).ports)).status, 404);
+  assert.equal((await handleListingFee({ app_id: APP }, { id: FEE_DEV }, fees({ kind: "none", amountCents: 0 }).ports)).status, 409);
+  assert.equal((await handleListingFee({ app_id: "x" }, { id: FEE_DEV }, fees({}).ports)).status, 400);
+  assert.equal((await handleListingFee({ app_id: APP }, { id: FEE_DEV }, fees(new Error("releases over 1 GB are not accepted")).ports)).status, 400);
+  const seen: boolean[] = [];
+  await handleListingFee({ app_id: APP, renew: true }, { id: FEE_DEV }, fees({ kind: "renewal" }, seen).ports);
+  assert.deepEqual(seen, [true]);
+});
+test("listing fee: upgrade names the new size", () => {
+  const form = checkoutForm(APP, { developerId: FEE_DEV, appName: "Echo", kind: "upgrade", tier: 2, amountCents: 1000 }, "https://n.com");
+  assert.match(form["line_items[0][price_data][product_data][name]"], /upgrade to 250 MB to 1 GB/);
+  const fresh = checkoutForm(APP, { developerId: FEE_DEV, appName: "Echo", kind: "new", tier: 1, amountCents: 1500 }, "https://n.com");
+  assert.match(fresh["line_items[0][price_data][product_data][name]"], /3 years of listing/);
+});
+
+async function stripeSig(payload: string, secret: string, t: number) {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const mac = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`${t}.${payload}`)));
+  return `t=${t},v1=${[...mac].map((b) => b.toString(16).padStart(2, "0")).join("")}`;
+}
+test("stripe webhook: signature must match and be recent", async () => {
+  const body = '{"type":"x"}', now = 1_800_000_000;
+  const h = await stripeSig(body, "whsec_test", now);
+  assert.equal(await verifyStripeSignature(body, h, "whsec_test", now), true);
+  assert.equal(await verifyStripeSignature(body + " ", h, "whsec_test", now), false);
+  assert.equal(await verifyStripeSignature(body, h, "whsec_other", now), false);
+  assert.equal(await verifyStripeSignature(body, h, "whsec_test", now + 1000), false);
+  assert.equal(await verifyStripeSignature(body, null, "whsec_test", now), false);
+  assert.equal(await verifyStripeSignature(body, "t=abc,v1=00", "whsec_test", now), false);
+});
+function paidEvent(over: Record<string, unknown> = {}, meta: Record<string, string> = {}) {
+  return { type: "checkout.session.completed", data: { object: {
+    id: "cs_9", payment_status: "paid", amount_total: 1500, currency: "usd",
+    metadata: { purpose: "listing_fee", app_id: APP, kind: "new", tier: "1", amount_cents: "1500", ...meta }, ...over } } };
+}
+test("stripe webhook: records a paid listing fee once the amount matches", async () => {
+  const rec: unknown[] = [];
+  const ports = { recordPayment: (p: unknown) => { rec.push(p); return Promise.resolve(); }, recordExtraFee: () => Promise.reject(new Error("not expected")) };
+  assert.equal((await handleStripeEvent(paidEvent(), ports)).status, 200);
+  assert.deepEqual(rec, [{ appId: APP, kind: "new", tier: 1, amountCents: 1500, sessionId: "cs_9" }]);
+  assert.equal((await handleStripeEvent(paidEvent({ amount_total: 100 }), ports)).status, 400);
+  assert.equal((await handleStripeEvent(paidEvent({}, { tier: "7" }), ports)).status, 400);
+  assert.equal((await handleStripeEvent(paidEvent({ payment_status: "unpaid" }), ports)).status, 200);
+  assert.equal((await handleStripeEvent(paidEvent({}, { purpose: "other" }), ports)).status, 200);
+  assert.equal((await handleStripeEvent({ type: "invoice.paid" }, ports)).status, 200);
+  assert.equal(rec.length, 1);
+});
+test("download: paid apps are not handed out free", async () => {
+  const d = dl({ file: { storagePath: "u/App.exe", fileName: "App.exe", releaseId: REL, kind: "executable", paid: true } });
+  assert.equal((await handleDownload(new URL(`https://x/download?file=${FID}`), d.ports)).status, 402);
+  assert.deepEqual(d.logged, []);
+});
+
+test("extra fee: the developer pays an open request, and the webhook records it", async () => {
+  const REQ = "88888888-8888-4888-8888-888888888888";
+  const forms: Record<string, string>[] = [];
+  const req = (status: "open" | "paid") => ({ id: REQ, appId: APP, appName: "Echo", developerId: FEE_DEV, amountCents: 2000, status });
+  const ports = (status: "open" | "paid"): FeePorts => ({
+    siteUrl: "https://n.com",
+    quote: () => Promise.reject(new Error("not used")),
+    createCheckout: (f) => { forms.push(f); return Promise.resolve({ id: "cs_r", url: "https://checkout.stripe.com/c/cs_r" }); },
+    feeRequest: (id) => Promise.resolve(id === REQ ? req(status) : null),
+  });
+  assert.equal((await handleListingFee({ request_id: REQ }, { id: FEE_DEV }, ports("open"))).status, 200);
+  assert.equal(forms[0]["metadata[purpose]"], "extra_fee"); assert.equal(forms[0]["line_items[0][price_data][unit_amount]"], "2000");
+  assert.equal((await handleListingFee({ request_id: REQ }, { id: "other" }, ports("open"))).status, 404);
+  assert.equal((await handleListingFee({ request_id: REQ }, { id: FEE_DEV }, ports("paid"))).status, 409);
+  assert.equal((await handleListingFee({ request_id: "x" }, { id: FEE_DEV }, ports("open"))).status, 400);
+
+  const got: unknown[] = [];
+  const wh = { recordPayment: () => Promise.reject(new Error("not expected")), recordExtraFee: (p: unknown) => { got.push(p); return Promise.resolve(); } };
+  const ev = (amount: number) => ({ type: "checkout.session.completed", data: { object: {
+    id: "cs_r", payment_status: "paid", amount_total: amount, currency: "usd",
+    metadata: { purpose: "extra_fee", request_id: REQ, app_id: APP, amount_cents: "2000" } } } });
+  assert.equal((await handleStripeEvent(ev(2000), wh)).status, 200);
+  assert.deepEqual(got, [{ requestId: REQ, amountCents: 2000, sessionId: "cs_r" }]);
+  assert.equal((await handleStripeEvent(ev(1), wh)).status, 400);
 });

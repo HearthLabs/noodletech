@@ -56,7 +56,7 @@ export async function handleScan(releaseId: unknown, caller: Caller, ports: Port
 // ----------------------------------------------------------------- downloads
 export interface DownloadPorts {
   /** Returns the storage path only when the file belongs to an approved release of a published app. */
-  findPublicFile(fileId: string): Promise<{ storagePath: string; fileName: string; releaseId: string; kind: string } | null>;
+  findPublicFile(fileId: string): Promise<{ storagePath: string; fileName: string; releaseId: string; kind: string; paid?: boolean } | null>;
   signedUrl(path: string, seconds: number, downloadName: string): Promise<string | null>;
   logDownload(releaseId: string): Promise<void>;
 }
@@ -68,6 +68,8 @@ export async function handleDownload(url: URL, ports: DownloadPorts): Promise<Re
   if (!isUuid(id)) return json(400, { error: "file must be a UUID" });
   const file = await ports.findPublicFile(id);
   if (!file) return json(404, { error: "not available" });
+  // Paid apps can be listed with a price, but buying them is not built yet, so nobody gets them free.
+  if (file.paid) return json(402, { error: "This app is paid. Buying it is not open yet." });
   const signed = await ports.signedUrl(file.storagePath, SIGNED_URL_SECONDS, file.fileName);
   if (!signed) return json(502, { error: "could not prepare the download" });
   if (file.kind === "executable") {

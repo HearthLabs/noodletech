@@ -1,4 +1,4 @@
-import { clear, fmtBytes, fmtDateTime, h, notice, statusBadge } from "../assets/dom.js";
+import { clear, fmtBytes, fmtDate, fmtDateTime, h, notice, statusBadge } from "../assets/dom.js";
 import { configured, ok, sb } from "../assets/api.js";
 import { mountFrame } from "../assets/layout.js";
 
@@ -18,13 +18,13 @@ async function boot() {
 
 function show() {
   clear(main);
-  const tabs = [["queue", "Review queue"], ["reports", "Reports"], ["developers", "Developers"]];
+  const tabs = [["queue", "Review queue"], ["apps", "Apps and fees"], ["reports", "Reports"], ["developers", "Developers"]];
   main.append(h("h1", {}, "Admin"),
     h("div", { class: "tabs", role: "tablist" }, ...tabs.map(([id, label]) =>
       h("button", { role: "tab", "aria-selected": String(tab === id), onclick: () => { tab = id; show(); } }, label))));
   const body = h("div", { class: "stack" });
   main.append(body);
-  const view = { queue, reports, developers }[tab];
+  const view = { queue, apps, reports, developers }[tab];
   view(body).catch((e) => body.append(notice("error", e.message)));
 }
 
@@ -126,6 +126,50 @@ async function reports(body) {
         h("button", { class: "btn secondary small", onclick: () => resolve("dismissed", false) }, "Dismiss")),
       status));
   }
+}
+
+// ------------------------------------------------------------ apps and fees
+// Every app with its downloads and fee status. From here an admin can ask a developer for an
+// extra fee (for example when downloads cost more than the registration fee covers) or remove an app.
+async function apps(body) {
+  const rows = ok(await sb.from("apps").select("id,name,slug,status,listed_until,paid_tier,price_cents, developers(display_name,contact_email)").order("name"), "Loading apps");
+  const counts = ok(await sb.from("app_download_counts").select("app_id,downloads"), "Loading downloads");
+  const requests = ok(await sb.from("fee_requests").select("*").eq("status", "open"), "Loading fee requests");
+  if (rows.length === 0) return void body.append(notice("info", "No apps yet."));
+  const dl = new Map(counts.map((c) => [c.app_id, Number(c.downloads)]));
+  const status = h("div", { "aria-live": "polite" });
+  const run = async (fn, args, confirmText) => {
+    if (confirmText && !confirm(confirmText)) return;
+    const { error } = await sb.rpc(fn, args);
+    if (error) return void status.replaceChildren(notice("error", error.message));
+    show();
+  };
+  const askFee = (a) => {
+    const amount = prompt(`Extra fee for ${a.name}, in US dollars:`);
+    if (!amount) return;
+    const cents = Math.round(Number(amount) * 100);
+    if (!(cents >= 100 && cents <= 100000)) return void status.replaceChildren(notice("error", "Enter an amount between $1 and $1,000."));
+    const reason = prompt("Reason shown to the developer (for example: 2,400 downloads this year, about $215 of bandwidth):");
+    if (!reason) return;
+    const days = Number(prompt("Days to pay (at least 7):", "30"));
+    run("admin_request_fee", { p_app: a.id, p_amount_cents: cents, p_reason: reason, p_days: days });
+  };
+  body.append(h("p", { class: "muted small" }, "Downloads are counted for listed apps. One download of a 1 GB app costs about $0.09 in bandwidth."), status,
+    h("table", {},
+      h("thead", {}, h("tr", {}, ...["App", "Status", "Downloads", "Paid until", "Extra fee", "Actions"].map((t) => h("th", {}, t)))),
+      h("tbody", {}, ...rows.map((a) => {
+        const open = requests.filter((r) => r.app_id === a.id);
+        return h("tr", {},
+          h("td", {}, h("a", { href: `/store/#/app/${a.slug}` }, a.name), h("div", { class: "muted small" }, a.developers?.display_name ?? "")),
+          h("td", {}, statusBadge(a.status)),
+          h("td", {}, (dl.get(a.id) ?? 0).toLocaleString()),
+          h("td", {}, a.listed_until ? `${fmtDate(a.listed_until)} (size ${a.paid_tier === 2 ? "up to 1 GB" : "up to 250 MB"})` : "Not paid"),
+          h("td", {}, ...open.map((r) => h("div", { class: "small" }, `$${(r.amount_cents / 100).toFixed(2)} due ${fmtDate(r.due_at)} `,
+            h("button", { class: "btn secondary small", onclick: () => run("admin_cancel_fee_request", { p_request: r.id }, "Cancel this fee request?") }, "Cancel")))),
+          h("td", {}, h("div", { class: "row" },
+            a.status !== "delisted" && h("button", { class: "btn secondary small", onclick: () => askFee(a) }, "Ask for extra fee"),
+            a.status !== "delisted" && h("button", { class: "btn danger small", onclick: () => run("admin_set_app_status", { p_app: a.id, p_status: "delisted" }, `Remove ${a.name} from the marketplace?`) }, "Remove"))));
+      }))));
 }
 
 // -------------------------------------------------------------- developers
